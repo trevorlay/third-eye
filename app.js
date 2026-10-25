@@ -1,7 +1,7 @@
 import * as store from './store.js';
 import { BROKER_STATUSES } from './store.js';
 
-const VERSION = '1.3.0';
+const VERSION = '1.3.1';
 const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const view = $('#view');

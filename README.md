@@ -10,4 +10,4 @@ An offline-first OSINT toolkit PWA: a tool launcher (57 tools), search and dork 
 
 **Cost badges and live tiles (v1.3):** tools whose results are paywalled show a gold $, and tools with some free results but a paid full report show ½$. "Hide paid" in the launcher hides the $ tools. The Sherlock and Holehe tiles now open the built-in live check, with a link to each project page.
 
-Only for lawful purposes, such as auditing your own exposure or protecting family. Version 1.3.0.
+Only for lawful purposes, such as auditing your own exposure or protecting family. Version 1.3.1.
