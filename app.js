@@ -1,7 +1,7 @@
 import * as store from './store.js';
 import { BROKER_STATUSES } from './store.js';
 
-const VERSION = '1.2.0';
+const VERSION = '1.3.0';
 const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const view = $('#view');
@@ -145,7 +145,7 @@ function builderResults(kind, v, place = '') {
   const order = state.data.categories.map(c => c.id);
   const out = state.data.tools.filter(t => t.search && t.search[kind])
     .sort((a, b) => order.indexOf(a.cat) - order.indexOf(b.cat))
-    .map(t => ({ name: t.name, cat: t.cat, url: fillTemplate(t.search[kind], v) }));
+    .map(t => ({ id: t.id, name: t.name, cat: t.cat, paid: t.paid, url: fillTemplate(t.search[kind], v) }));
   const gq = kind === 'name' ? `"${v}"${place ? ` "${place}"` : ''}` : kind === 'phone' ? phoneVariants(v) : `"${v}"`;
   out.unshift({ name: 'Google (exact match)', cat: 'search', url: googleURL(gq) });
   return out;
@@ -172,23 +172,37 @@ async function saveToCase(finding) {
 }
 
 // ---------- TOOLS (launcher) ----------
+// Cost badges: 'paid' = must pay to see any real result, 'partial' = some free results, full report paid.
+const PAID = { paid: ['$', 'Paywalled results'], partial: ['½$', 'Some free, full report paid'] };
+const paidBadge = p => PAID[p] ? `<span class="paidb paidb-${p}" role="img" aria-label="${PAID[p][1]}" title="${PAID[p][1]}">${PAID[p][0]}</span>` : '';
+const paidLegend = id => `<p class="legend" id="${id}"><span aria-hidden="true">${paidBadge('paid')}</span> paywalled results · <span aria-hidden="true">${paidBadge('partial')}</span> some free, full report paid · no badge = free</p>`;
+const liveHref = kind => kind === 'email' ? '#/search/builder/live' : '#/search/usernames/live';
 function toolHTML(t, ts) {
   const s = state.settings, fav = s.favs.includes(t.id), pin = s.pins.includes(t.id);
   const initial = esc((t.name.match(/[A-Za-z0-9]/) || ['?'])[0].toUpperCase());
-  return `<div class="tool" data-tool="${esc(t.id)}">
-    <a class="open" href="${esc(t.url)}" target="_blank" rel="noopener noreferrer" aria-label="Open ${esc(t.name)}">
+  const live = t.live === 'username' || t.live === 'email';
+  const open = live
+    ? `<a class="open" href="${liveHref(t.live)}" data-live-tool="${esc(t.live)}" aria-label="Open ${esc(t.name)} live check">`
+    : `<a class="open" href="${esc(t.url)}" target="_blank" rel="noopener noreferrer" aria-label="Open ${esc(t.name)}${t.install ? ' project page (install required)' : ''}">`;
+  const hostLine = live ? `<span class="host live">Live check · runs in this app</span>`
+    : t.install ? `<span class="host">${hl(host(t.url), ts)}</span><span class="pill inst">Project page (install required)</span>`
+    : `<span class="host">${hl(host(t.url), ts)}</span>`;
+  return `<div class="tool${live ? ' haslive' : ''}" data-tool="${esc(t.id)}" data-paid="${esc(t.paid || 'free')}">
+    ${open}
       <span class="ava c-${esc(t.cat)}">${initial}</span>
-      <span class="tx"><span class="nm">${hl(t.name, ts)}</span>${t.custom ? ' <span class="pill mine">My link</span>' : ''}
-        <span class="ds">${hl(t.desc || '', ts)}</span><span class="host">${hl(host(t.url), ts)}</span></span></a>
+      <span class="tx"><span class="nm"><span class="nmt">${hl(t.name, ts)}</span>${paidBadge(t.paid)}</span>${t.custom ? ' <span class="pill mine">My link</span>' : ''}
+        <span class="ds">${hl(t.desc || '', ts)}</span>${hostLine}</span></a>
     <button class="iconbtn${fav ? ' on' : ''}" type="button" data-fav="${esc(t.id)}" aria-pressed="${fav}" aria-label="${fav ? 'Remove from' : 'Add to'} favorites">${ICONS.star}</button>
     <button class="iconbtn pin${pin ? ' on' : ''}" type="button" data-pin="${esc(t.id)}" aria-pressed="${pin}" aria-label="${pin ? 'Unpin' : 'Pin to top'}">${ICONS.pin}</button>
     ${t.custom ? `<button class="iconbtn" type="button" data-linkmenu="${esc(t.id)}" aria-label="Edit or delete link">${ICONS.more}</button>` : ''}
+    ${live ? `<a class="projlink" href="${esc(t.url)}" target="_blank" rel="noopener noreferrer" aria-label="${esc(t.name)} project page on ${esc(host(t.url))}">Project page ↗ <span class="host">${esc(host(t.url))}</span></a>` : ''}
   </div>`;
 }
 function renderTools() {
   const s = state.settings, ts = state.toolQ.toLowerCase().split(/\s+/).filter(Boolean);
   const cats = state.data.categories;
-  const tools = allTools().filter(t => !ts.length || ts.every(x => [t.name, t.desc, host(t.url), (cats.find(c => c.id === t.cat) || {}).name].join(' ').toLowerCase().includes(x)));
+  const hidePaid = !!s.hidePaid;
+  const tools = allTools().filter(t => !(hidePaid && t.paid === 'paid')).filter(t => !ts.length || ts.every(x => [t.name, t.desc, host(t.url), (cats.find(c => c.id === t.cat) || {}).name].join(' ').toLowerCase().includes(x)));
   const f = state.toolFilter;
   const sections = [];
   const pinned = tools.filter(t => s.pins.includes(t.id)), favs = tools.filter(t => s.favs.includes(t.id));
@@ -200,11 +214,13 @@ function renderTools() {
   else if (f === 'mine') sections.push({ id: 'mine', name: 'My links', items: tools.filter(t => t.custom) });
   else { const c = cats.find(x => x.id === f); sections.push({ id: f, name: c ? `${c.icon} ${c.name}` : f, items: tools.filter(t => t.cat === f) }); }
   const total = new Set(sections.flatMap(x => x.items.map(t => t.id))).size;
+  const nHidden = hidePaid ? allTools().filter(t => t.paid === 'paid').length : 0;
   const chip = (id, label) => `<button class="chip${f === id ? ' on' : ''}" type="button" data-tf="${esc(id)}">${esc(label)}</button>`;
   view.innerHTML = `${backupBanner()}
     <div class="searchbox">${ICONS.search}<input id="tq" type="search" placeholder="Filter ${allTools().length} tools" autocomplete="off" value="${esc(state.toolQ)}" aria-label="Filter tools"><button class="clear" id="tqclear" type="button" aria-label="Clear"${state.toolQ ? '' : ' hidden'}>×</button></div>
     <div class="filters" role="toolbar" aria-label="Tool categories">${chip('all', 'All')}${chip('favs', '★ Favorites')}${chip('mine', 'My links')}${cats.map(c => chip(c.id, c.name)).join('')}</div>
-    <div class="row"><span class="resultcount spacer" id="toolcount">${total} link${total === 1 ? '' : 's'} · open in a new tab</span><button class="btn sm" id="addlink" type="button">+ Add link</button></div>
+    <div class="row"><span class="resultcount spacer" id="toolcount">${total} link${total === 1 ? '' : 's'} · open in a new tab${nHidden ? ` · ${nHidden} paid hidden` : ''}</span><button class="btn sm" id="addlink" type="button">+ Add link</button></div>
+    <div class="row paidrow">${paidLegend('paid-legend')}<button class="chip toggle${hidePaid ? ' on' : ''}" id="hidepaid" type="button" aria-pressed="${hidePaid}" title="Hide tools whose results are paywalled (½$ stays visible)">${hidePaid ? '✓ ' : ''}Hide paid</button></div>
     ${sections.map(sec => `<h2 id="sec-${esc(sec.id)}">${esc(sec.name)}</h2><div class="toolgrid" data-sec="${esc(sec.id)}">${sec.items.map(t => toolHTML(t, ts)).join('')}</div>`).join('')}
     ${total ? '' : `<div class="empty"><span class="big">🔭</span>${f === 'favs' ? 'Tap ☆ on any tool to add it to favorites.' : f === 'mine' ? 'Add your own links with “+ Add link”.' : 'No tools match.'}</div>`}
     <div class="card note small">🔒 Third Eye never contacts these sites itself. Links open only when you tap them, in a new tab.</div>
@@ -214,6 +230,10 @@ function renderTools() {
   $('#tqclear').onclick = () => { state.toolQ = ''; renderTools(); };
   $$('[data-tf]').forEach(b => b.onclick = () => { state.toolFilter = b.dataset.tf; renderTools(); });
   $('#addlink').onclick = () => openLinkForm();
+  $('#hidepaid').onclick = async () => {
+    state.settings = await store.saveSettings({ hidePaid: !hidePaid });
+    renderTools(); toast(!hidePaid ? 'Paywalled tools hidden' : 'Showing all tools');
+  };
 }
 async function toggleList(key, id) {
   const cur = state.settings[key]; const on = !cur.includes(id);
@@ -269,14 +289,31 @@ function openLinkForm(link = null) {
 
 // ---------- SEARCH ----------
 const STABS = [['builder', 'Builder'], ['usernames', 'Usernames'], ['dorks', 'Dorks'], ['image', 'Image']];
-function renderSearch(tab) {
+function renderSearch(tab, sub = '') {
   if (!STABS.some(t => t[0] === tab)) tab = 'builder';
+  // #/search/usernames/live (Sherlock tile) and #/search/builder/live (Holehe tile) open the live check entry.
+  state.liveEntry = sub === 'live' ? (tab === 'usernames' ? 'username' : tab === 'builder' ? 'email' : null) : null;
+  if (state.liveEntry === 'email' && state.builder.kind !== 'email') { state.builder.kind = 'email'; state.builder.q = ''; }
   view.innerHTML = `<nav class="tabs" aria-label="Search tools">${STABS.map(([id, l]) => `<a href="#/search/${id}" class="${id === tab ? 'on' : ''}" data-stab="${id}">${l}</a>`).join('')}</nav>
     <div id="spane"></div>
     <details class="card note small" id="cors-note"><summary><b>Why doesn’t Third Eye check sites automatically?</b></summary>
       <p>Browsers block web pages from reading other sites’ responses (CORS), so a phone-only app can’t run live Sherlock- or Holehe-style checks. Live checks need a small server: set yours up in Settings → Live check server to get “Run live check” buttons for usernames (Sherlock) and emails (Holehe). Without it, each link opens the real site and you mark what you see. Nothing is sent anywhere until you tap a link or start a live check.</p></details>
     <div class="endmark" id="end"></div>`;
   ({ builder: paneBuilder, usernames: paneUsernames, dorks: paneDorks, image: paneImage })[tab]($('#spane'));
+  if (state.liveEntry && state.liveFocused !== location.hash) {
+    const i = $(state.liveEntry === 'username' ? '#uq' : '#bq'); if (i) i.focus();
+  }
+  state.liveFocused = state.liveEntry ? location.hash : '';
+}
+function liveIntro(kind) {
+  if (state.liveEntry !== kind) return '';
+  const isU = kind === 'username', t = state.data.tools.find(x => x.live === kind) || {};
+  const nm = isU ? 'Sherlock' : 'Holehe';
+  return `<div class="card live" id="live-intro" data-live-entry="${kind}">
+    <div class="row nowrap"><b class="spacer">Live check · ${nm}</b>${t.url ? ext(t.url, 'Project page ' + ICONS.open, 'btn sm ghost projlink') : ''}</div>
+    <p class="small">${isU ? 'Type a username and tap Check. Sherlock runs on your live check server and marks the matches in the list below.' : 'Type an email and tap Build searches. Holehe runs on your live check server and shows which sites the email is registered on.'}</p>
+    ${liveReady() ? '' : `<p class="small" id="live-nokey">⚠️ No live check server key yet. Add it in <a href="#/settings">Settings → Live check server</a>. ${isU ? 'Until then, Check builds the offline list of profile links to open and mark by hand.' : 'Until then, Build searches gives you the offline email searches.'}</p>`}
+  </div>`;
 }
 
 function paneBuilder(el) {
@@ -284,6 +321,7 @@ function paneBuilder(el) {
   const v = cleanInput(b.kind, b.q), err = b.q ? validInput(b.kind, v) : '';
   const res = v && !err ? builderResults(b.kind, v, b.place.trim()) : [];
   el.innerHTML = `<h1>Search builder</h1><p class="muted small">Builds ready-to-open searches across the toolkit. Nothing is fetched until you tap Open.</p>
+    ${b.kind === 'email' ? liveIntro('email') : ''}
     <div class="chips" role="radiogroup" aria-label="Search type">${Object.entries(KINDS).map(([id, x]) => `<button class="chip${id === b.kind ? ' on' : ''}" type="button" role="radio" aria-checked="${id === b.kind}" data-kind="${id}">${x.label}</button>`).join('')}</div>
     <form class="form" id="bform" novalidate>
       <label class="lbl" for="bq">${k.label}</label><input type="${k.type === 'email' ? 'email' : k.type === 'tel' ? 'tel' : 'text'}" id="bq" value="${esc(b.q)}" placeholder="${esc(k.ph)}" autocomplete="off" autocapitalize="${b.kind === 'name' ? 'words' : 'off'}" spellcheck="false">
@@ -294,10 +332,12 @@ function paneBuilder(el) {
     </form>
     ${b.kind === 'email' && v && !err ? liveEmailCard(v) : ''}
     ${res.length ? `<div class="row"><span class="resultcount spacer" id="bcount">${res.length} searches for <b>${esc(v)}</b></span><button class="btn sm" type="button" id="bsave">${ICONS.save} Save to case</button></div>
-    <div class="reslist" id="bres">${res.map((r, i) => `<div class="res" data-res="${i}"><div class="tx"><div class="nm">${esc(r.name)}</div><div class="u mono">${esc(host(r.url))}</div></div>
+    ${res.some(r => PAID[r.paid]) ? paidLegend('bres-legend') : ''}
+    <div class="reslist" id="bres">${res.map((r, i) => `<div class="res" data-res="${i}"${r.id ? ` data-tool="${esc(r.id)}"` : ''} data-paid="${esc(r.paid || 'free')}"><div class="tx"><div class="nm">${esc(r.name)}${paidBadge(r.paid)}</div><div class="u mono">${esc(host(r.url))}</div></div>
       <button class="btn sm ghost" type="button" data-copy="${esc(r.url)}" aria-label="Copy ${esc(r.name)} link">${ICONS.copy}</button>${ext(r.url, 'Open ' + ICONS.open, 'btn sm')}</div>`).join('')}</div>` : ''}`;
   $$('[data-kind]', el).forEach(c => c.onclick = () => { b.kind = c.dataset.kind; b.q = ''; paneBuilder(el); $('#bq').focus(); });
-  $('#bform').onsubmit = e => { e.preventDefault(); b.q = $('#bq').value; b.place = $('#bplace') ? $('#bplace').value : ''; paneBuilder(el); const r = $('#bres'); if (r) r.scrollIntoView({ block: 'nearest' }); };
+  $('#bform').onsubmit = e => { e.preventDefault(); b.q = $('#bq').value; b.place = $('#bplace') ? $('#bplace').value : ''; paneBuilder(el); const r = $('#bres'); if (r) r.scrollIntoView({ block: 'nearest' });
+    if (state.liveEntry === 'email' && b.kind === 'email' && liveReady()) { const ev = cleanInput('email', b.q); if (ev && !validInput('email', ev)) startLive('email', ev); } };
   wireLiveEmail(v);
   if ($('#bsave')) $('#bsave').onclick = () => saveToCase({
     text: `${k.label} search: ${v}${b.place ? ` (${b.place.trim()})` : ''}\n` + res.map(r => `• ${r.name}: ${r.url}`).join('\n'),
@@ -316,6 +356,7 @@ function paneUsernames(el) {
   const groups = Object.entries(U.categories).map(([id, name]) => ({ id, name, items: shown.filter(s => s.cat === id) })).filter(g => g.items.length);
   const chip = (id, label) => `<button class="chip${uc.filter === id ? ' on' : ''}" type="button" data-ucf="${id}">${label}</button>`;
   el.innerHTML = `<h1>Username checker</h1><p class="muted small">${U.sites.length} sites. Open each profile link and mark what you see. Many sites show a page even when no account exists, so check the content.</p>
+    ${liveIntro('username')}
     <form class="form" id="uform" novalidate><label class="lbl" for="uq">Username</label>
       <div class="row nowrap"><input type="text" id="uq" class="spacer" value="${esc(uc.u)}" placeholder="e.g. janedoe42" autocomplete="off" autocapitalize="off" spellcheck="false"><button class="btn primary" id="ugo" type="submit">Check</button></div>
       <div class="err" id="uerr"></div></form>
@@ -328,6 +369,7 @@ function paneUsernames(el) {
     if (!nv) { $('#uerr').textContent = 'Type a username.'; return; }
     if (nv !== u) { uc.marks = {}; uc.filter = 'all'; }
     uc.u = nv; paneUsernames(el);
+    if (state.liveEntry === 'username' && liveReady()) startLive('username', nv);
   };
   if (!u) return;
   wireLiveUser(u);
@@ -453,14 +495,16 @@ function paneDorks(el) {
 function paneImage(el) {
   const im = state.img, url = im.url.trim(), ok = isHttp(url);
   const engines = state.data.tools.filter(t => t.search && t.search.image);
+  const uploaders = [...engines, ...state.data.tools.filter(t => t.cat === 'image' && t.upload && !(t.search && t.search.image))];
   el.innerHTML = `<h1>Reverse image search</h1><p class="muted small">Paste a link to an image that’s already online. Third Eye builds search links for ${engines.length} engines.</p>
     <form class="form" id="iform" novalidate><label class="lbl" for="iq">Image URL</label>
       <div class="row nowrap"><input type="url" id="iq" class="spacer" value="${esc(im.url)}" placeholder="https://…/photo.jpg" inputmode="url" autocomplete="off" spellcheck="false"><button class="btn primary" id="igo" type="submit">Build</button></div>
       <div class="err" id="ierr">${im.url && !ok ? 'Enter a full image link starting with https://' : ''}</div></form>
     ${ok ? `<div class="row"><span class="resultcount spacer">${engines.length} engines</span><button class="btn sm" type="button" id="isave">${ICONS.save} Save to case</button></div>
-    <div class="reslist" id="ires">${engines.map(t => { const u = fillTemplate(t.search.image, url); return `<div class="res" data-engine="${esc(t.id)}"><div class="tx"><div class="nm">${esc(t.name)}</div><div class="u mono">${esc(host(u))}</div></div><button class="btn sm ghost" type="button" data-copy="${esc(u)}" aria-label="Copy link">${ICONS.copy}</button>${ext(u, 'Open ' + ICONS.open, 'btn sm')}</div>`; }).join('')}</div>` : ''}
+    <div class="reslist" id="ires">${engines.map(t => { const u = fillTemplate(t.search.image, url); return `<div class="res" data-engine="${esc(t.id)}" data-paid="${esc(t.paid || 'free')}"><div class="tx"><div class="nm">${esc(t.name)}${paidBadge(t.paid)}</div><div class="u mono">${esc(host(u))}</div></div><button class="btn sm ghost" type="button" data-copy="${esc(u)}" aria-label="Copy link">${ICONS.copy}</button>${ext(u, 'Open ' + ICONS.open, 'btn sm')}</div>`; }).join('')}</div>` : ''}
     <div class="card note small" id="upload-note"><b>Photo on your phone?</b> Third Eye can’t upload it for you (that would need a server). Open an engine below and use its own upload button, or in Chrome long-press any web image and choose “Search image with Google”.
-      <div class="row">${engines.map(t => ext(t.url, esc(t.name), 'btn sm ghost')).join('')}</div></div>`;
+      <div class="row" id="upload-links">${uploaders.map(t => `<a class="btn sm ghost" href="${esc(t.url)}" target="_blank" rel="noopener noreferrer" data-upload="${esc(t.id)}" data-paid="${esc(t.paid || 'free')}">${esc(t.name)}${paidBadge(t.paid)}</a>`).join('')}</div>
+      ${uploaders.some(t => PAID[t.paid]) ? paidLegend('img-legend') : ''}</div>`;
   $('#iform').onsubmit = e => { e.preventDefault(); im.url = $('#iq').value.trim(); paneImage(el); };
   if ($('#isave')) $('#isave').onclick = () => saveToCase({ text: `Reverse image search: ${url}\n` + engines.map(t => `• ${t.name}: ${fillTemplate(t.search.image, url)}`).join('\n'), url, source: 'Reverse image', tags: ['image'] });
 }
@@ -1147,17 +1191,17 @@ addEventListener('keydown', e => { if (e.key === 'Escape' && sheetEl && !mroot.q
 // ---------- router ----------
 function route() {
   const h = location.hash.replace(/^#\/?/, '');
-  const [a, b] = h.split('/');
-  return { a: a || 'tools', b: b ? decodeURIComponent(b) : '' };
+  const [a, b, c] = h.split('/');
+  return { a: a || 'tools', b: b ? decodeURIComponent(b) : '', c: c ? decodeURIComponent(c) : '' };
 }
 function render() {
-  const { a, b } = route();
+  const { a, b, c } = route();
   revokeGrid();
   const nav = a === 'case' ? 'cases' : a;
   $$('.bottomnav a').forEach(x => { const on = x.dataset.nav === nav; x.classList.toggle('active', on); on ? x.setAttribute('aria-current', 'page') : x.removeAttribute('aria-current'); });
   const titles = { tools: 'Tools', search: 'Search', cases: 'Cases', case: 'Case', removal: 'Removal', settings: 'Settings' };
   document.title = 'Third Eye · ' + (titles[a] || 'Tools');
-  if (a === 'search') renderSearch(b);
+  if (a === 'search') renderSearch(b, c);
   else if (a === 'cases') renderCases();
   else if (a === 'case') renderCase(b);
   else if (a === 'removal') renderRemoval();

@@ -9,7 +9,7 @@ const SCHEMA = 2; // backup format; schema 1 files (no photos) still import
 const STORES = ['links', 'cases', 'findings', 'brokers'];
 export const BROKER_STATUSES = ['not started', 'submitted', 'confirmed removed', 'reappeared'];
 const DEFAULT_SETTINGS = {
-  theme: 'dark', lastBackup: null, favs: [], pins: [], lastCaseId: null,
+  theme: 'dark', lastBackup: null, favs: [], pins: [], lastCaseId: null, hidePaid: false,
   profile: { name: '', aliases: '', address: '', pastAddresses: '', emails: '', phones: '', contactEmail: '' },
 };
 

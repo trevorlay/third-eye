@@ -8,4 +8,6 @@ An offline-first OSINT toolkit PWA: a tool launcher (57 tools), search and dork 
 
 **Case photos (v1.2):** take or pick photos for a case. They are downscaled to 2000 px, stored only in IndexedDB, and can be captioned, shared, downloaded or reverse-searched on TinEye and Google Lens, where you upload them yourself. They are included in backups. v1.2 also removed PeekYou, Nuwber, Radaris and Yandex as search tools; their broker opt-out entries are still there.
 
-Only for lawful purposes, such as auditing your own exposure or protecting family. Version 1.2.0.
+**Cost badges and live tiles (v1.3):** tools whose results are paywalled show a gold $, and tools with some free results but a paid full report show ½$. "Hide paid" in the launcher hides the $ tools. The Sherlock and Holehe tiles now open the built-in live check, with a link to each project page.
+
+Only for lawful purposes, such as auditing your own exposure or protecting family. Version 1.3.0.
