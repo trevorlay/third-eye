@@ -1,13 +1,13 @@
 import * as store from './store.js';
 import { BROKER_STATUSES } from './store.js';
 
-const VERSION = '1.1.1';
+const VERSION = '1.2.0';
 const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const view = $('#view');
 const state = {
   data: { categories: [], tools: [], usernames: { categories: {}, sites: [] }, brokers: [] },
-  links: [], cases: [], findings: [], brokerStatus: new Map(), settings: {},
+  links: [], cases: [], findings: [], brokerStatus: new Map(), settings: {}, photoCounts: {},
   toolQ: '', toolFilter: 'all',
   builder: { kind: 'name', q: '', place: '' },
   uc: { u: '', marks: {}, filter: 'all' },
@@ -74,6 +74,7 @@ async function load() {
   let bs;
   [state.links, state.cases, state.findings, bs, state.settings] = await Promise.all([store.listLinks(), store.listCases(), store.listFindings(), store.listBrokerStatus(), store.getSettings()]);
   state.live = await store.getLive();
+  state.photoCounts = await store.photoCounts().catch(() => ({}));
   state.brokerStatus = new Map(bs.map(x => [x.id, x]));
   updateBadge();
 }
@@ -82,7 +83,7 @@ function applyTheme(t) {
   const light = t === 'light' || (t === 'system' && matchMedia('(prefers-color-scheme: light)').matches);
   $('meta[name=theme-color]').content = light ? '#f5f3fb' : '#0d0b16';
 }
-const hasData = () => state.cases.length || state.findings.length || state.links.length || state.brokerStatus.size;
+const hasData = () => Object.keys(state.photoCounts).length || state.cases.length || state.findings.length || state.links.length || state.brokerStatus.size;
 function backupDue() {
   if (!hasData()) return false;
   const lb = state.settings.lastBackup;
@@ -483,7 +484,7 @@ function renderCases() {
   const card = c => `<a class="card casecard${c.archived ? ' archived' : ''}" href="#/case/${esc(c.id)}" data-case="${esc(c.id)}">
       <div class="top"><span class="name">${hl(c.name, ts)}</span>${c.archived ? '<span class="pill">Archived</span>' : ''}${ICONS.chev}</div>
       ${c.subject ? `<div class="subject">Subject: ${hl(c.subject, ts)}</div>` : ''}
-      <div class="sub">${nFind(c.id)} finding${nFind(c.id) === 1 ? '' : 's'} · updated ${esc(fmtDate(c.updatedAt))}</div></a>`;
+      <div class="sub">${nFind(c.id)} finding${nFind(c.id) === 1 ? '' : 's'}${state.photoCounts[c.id] ? ` · ${state.photoCounts[c.id]} photo${state.photoCounts[c.id] === 1 ? '' : 's'}` : ''} · updated ${esc(fmtDate(c.updatedAt))}</div></a>`;
   let body;
   if (ts.length) {
     const cs = state.cases.filter(c => caseMatches(c, ts)), fs = state.findings.filter(f => findingMatches(f, ts));
@@ -514,17 +515,148 @@ function renderCase(id) {
     ${c.notes ? `<p class="muted small">${esc(c.notes)}</p>` : ''}
     <div class="acts"><button class="btn sm primary" type="button" id="addf">+ Add finding</button><button class="btn sm" type="button" id="editcase">Edit</button>
       <button class="btn sm" type="button" id="archcase">${c.archived ? 'Unarchive' : 'Archive'}</button><button class="btn sm danger" type="button" id="delcase">Delete</button></div>
+    <section class="photos" id="photos" data-case="${esc(c.id)}" aria-labelledby="pcount">
+      <h2 id="pcount">Photos</h2>
+      <div class="row"><button class="btn sm teal" type="button" id="ph-cam">📷 Take photo</button><button class="btn sm" type="button" id="ph-gal">🖼️ From gallery</button></div>
+      <input type="file" id="ph-cam-in" accept="image/*" capture="environment" hidden>
+      <input type="file" id="ph-gal-in" accept="image/*" multiple hidden>
+      <div class="photogrid" id="pgrid"></div>
+      <p class="tiny muted" id="ph-storage">Photos stay on this phone. Nothing is uploaded.</p>
+    </section>
     <h2 id="fcount">${fs.length} finding${fs.length === 1 ? '' : 's'}</h2>
     ${fs.map(f => findingHTML(f)).join('') || '<div class="empty small">No findings yet. Save results from the Search tools or tap + to add one.</div>'}
     <div class="endmark" id="end"></div>`;
+  wirePhotos(c);
   $('#addf').onclick = () => openFinding(null, c.id);
   $('#editcase').onclick = () => openCaseForm(c);
   $('#archcase').onclick = async () => { await store.saveCase({ ...c, archived: !c.archived }); await load(); render(); toast(c.archived ? 'Case restored' : 'Case archived'); };
   $('#delcase').onclick = async () => {
-    if (!await confirmDialog('Delete this case?', `“${c.name}” and its ${fs.length} finding${fs.length === 1 ? '' : 's'} will be deleted from this phone.`, 'Delete', true)) return;
+    const np = state.photoCounts[c.id] || 0;
+    if (!await confirmDialog('Delete this case?', `“${c.name}”, its ${fs.length} finding${fs.length === 1 ? '' : 's'} and ${np} photo${np === 1 ? '' : 's'} will be deleted from this phone.`, 'Delete', true)) return;
     await store.deleteCase(c.id); await load(); location.hash = '#/cases'; toast('Case deleted');
   };
 }
+// ---------- PHOTOS (stored as JPEG Blobs in IndexedDB; never uploaded) ----------
+const PHOTO_MAX = 2000, PHOTO_Q = 0.85, THUMB_MAX = 400, THUMB_Q = 0.75;
+const fmtBytes = n => n >= 1e9 ? (n / 1e9).toFixed(1) + ' GB' : n >= 1e6 ? (n / 1e6).toFixed(1) + ' MB' : Math.max(1, Math.round(n / 1e3)) + ' KB';
+let gridURLs = [];
+const revokeGrid = () => { gridURLs.forEach(u => URL.revokeObjectURL(u)); gridURLs = []; };
+async function decodeImage(file) {
+  if (self.createImageBitmap) { try { const b = await createImageBitmap(file, { imageOrientation: 'from-image' }); return { src: b, w: b.width, h: b.height, close: () => b.close && b.close() }; } catch { /* fall back to <img> */ } }
+  return new Promise((res, rej) => {
+    const u = URL.createObjectURL(file), im = new Image();
+    im.onload = () => res({ src: im, w: im.naturalWidth, h: im.naturalHeight, close: () => URL.revokeObjectURL(u) });
+    im.onerror = () => { URL.revokeObjectURL(u); rej(new Error('unreadable')); };
+    im.src = u;
+  });
+}
+function encodeJpeg(img, max, q) {
+  const s = Math.min(1, max / Math.max(img.w, img.h)), w = Math.max(1, Math.round(img.w * s)), h = Math.max(1, Math.round(img.h * s));
+  const c = document.createElement('canvas'); c.width = w; c.height = h;
+  const x = c.getContext('2d'); x.fillStyle = '#fff'; x.fillRect(0, 0, w, h); x.imageSmoothingQuality = 'high'; x.drawImage(img.src, 0, 0, w, h);
+  return new Promise((res, rej) => c.toBlob(b => { c.width = c.height = 0; b ? res({ blob: b, width: w, height: h }) : rej(new Error('encode failed')); }, 'image/jpeg', q));
+}
+async function processPhoto(file) { // downscale to 2000px max edge, JPEG ~0.85, plus a small thumbnail
+  const img = await decodeImage(file);
+  try {
+    const full = await encodeJpeg(img, PHOTO_MAX, PHOTO_Q), th = await encodeJpeg(img, THUMB_MAX, THUMB_Q);
+    return { blob: full.blob, thumb: th.blob, width: full.width, height: full.height, size: full.blob.size, type: 'image/jpeg', name: file.name || '' };
+  } finally { img.close(); }
+}
+async function addPhotos(caseId, files) {
+  files = [...(files || [])]; if (!files.length) return;
+  if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
+  let ok = 0, bad = 0;
+  toast(files.length > 1 ? `Saving ${files.length} photos…` : 'Saving photo…');
+  for (const f of files) {
+    try { await store.addPhoto({ caseId, ...(await processPhoto(f)) }); ok++; }
+    catch (e) { bad++; console.warn('photo skipped', e && e.message); }
+  }
+  await load();
+  if (route().a === 'case' && route().b === caseId) render();
+  if (bad) alertDialog(`${bad} photo${bad === 1 ? '' : 's'} couldn’t be read`, 'This browser can’t open that image type (for example HEIC). Try a JPEG or PNG, or take the photo with the camera button.');
+  if (ok) toast(`${ok} photo${ok === 1 ? '' : 's'} saved ✓`);
+}
+async function storageText() {
+  if (!navigator.storage || !navigator.storage.estimate) return '';
+  try {
+    const [e, p] = await Promise.all([navigator.storage.estimate(), navigator.storage.persisted ? navigator.storage.persisted() : Promise.resolve(false)]);
+    return `Storage used: ${fmtBytes(e.usage || 0)}${e.quota ? ` of ${fmtBytes(e.quota)} available` : ''} · ${p ? 'protected from automatic clearing ✓' : 'not yet protected from automatic clearing (back up regularly)'}`;
+  } catch { return ''; }
+}
+function wirePhotos(c) {
+  $('#ph-cam').onclick = () => $('#ph-cam-in').click();
+  $('#ph-gal').onclick = () => $('#ph-gal-in').click();
+  for (const id of ['#ph-cam-in', '#ph-gal-in']) $(id).onchange = e => { const fs = [...e.target.files]; e.target.value = ''; addPhotos(c.id, fs); };
+  drawPhotos(c.id);
+}
+async function drawPhotos(caseId) {
+  const list = await store.listPhotos(caseId), sec = $('#photos');
+  if (!sec || sec.dataset.case !== caseId) return; // user navigated away meanwhile
+  revokeGrid();
+  state.casePhotos = list;
+  $('#pcount').textContent = `${list.length} photo${list.length === 1 ? '' : 's'}`;
+  $('#pgrid').innerHTML = list.map((p, i) => { const u = URL.createObjectURL(p.thumb || p.blob); gridURLs.push(u);
+    return `<button class="ph" type="button" data-ph="${esc(p.id)}" aria-label="Open photo ${i + 1}${p.caption ? ': ' + esc(p.caption) : ''}"><img src="${u}" alt="" loading="lazy">${p.caption ? `<span class="cap">${esc(p.caption)}</span>` : ''}</button>`; }).join('')
+    || '<div class="empty small">No photos yet. Take one with the camera or pick from your gallery.</div>';
+  $$('[data-ph]', $('#pgrid')).forEach(b => b.onclick = () => openPhoto(caseId, b.dataset.ph));
+  const t = await storageText(); if (t && $('#ph-storage')) $('#ph-storage').textContent = 'Photos stay on this phone; nothing is uploaded. ' + t;
+}
+function photoFileName(p, i) { return `third-eye-${slug(caseName(p.caseId)) || 'case'}-${i + 1}-${(p.createdAt || '').slice(0, 10)}.jpg`; }
+async function sharePhoto(p, i) {
+  const file = new File([p.blob], photoFileName(p, i), { type: p.type || 'image/jpeg' });
+  const data = { files: [file], title: 'Photo' }; if (p.caption) data.text = p.caption;
+  if (navigator.canShare && navigator.share && navigator.canShare({ files: [file] })) {
+    try { await navigator.share(data); } catch (e) { if (!e || e.name !== 'AbortError') toast('Couldn’t share that photo'); }
+  } else alertDialog('Sharing isn’t available here', 'This browser can’t share files. Tap “Save” to put the photo in your downloads, then upload it from there.');
+}
+async function reverseSearchPhoto(p, i) {
+  const v = await modal(`<h3>Reverse search this photo</h3>
+    <p>Third Eye never uploads anything. Open a site below and use its own upload button to pick this photo (tap “Save” first so it’s in your downloads), or use Share to send it straight to an app such as Google Lens.</p>
+    <div class="stack" id="rev-links">${ext('https://tineye.com/', 'TinEye (upload) ' + ICONS.open, 'btn block')}${ext('https://lens.google.com/', 'Google Lens (upload) ' + ICONS.open, 'btn block')}
+      <button class="btn block" type="button" data-v="save">Save photo first</button><button class="btn block" type="button" data-v="share">Share…</button><button class="btn block ghost" type="button" data-v="__cancel">Close</button></div>`);
+  if (v === 'save') $('#pv-dl') && $('#pv-dl').click();
+  if (v === 'share') sharePhoto(p, i);
+}
+function openPhoto(caseId, id) {
+  let list = state.casePhotos || [], i = Math.max(0, list.findIndex(p => p.id === id)), url = '';
+  const ov = openSheet(`<header><h2 id="sheet-title">Photo</h2><button class="iconbtn" type="button" data-close aria-label="Close">${ICONS.x}</button></header><div class="body" id="pv"></div>`, 'sheet viewer');
+  ov.onClose = () => { if (url) URL.revokeObjectURL(url); url = ''; };
+  const draw = () => {
+    const p = list[i]; if (!p) return closeSheet();
+    if (url) URL.revokeObjectURL(url); url = URL.createObjectURL(p.blob);
+    $('#sheet-title', ov).textContent = `Photo ${i + 1} of ${list.length}`;
+    $('#pv', ov).innerHTML = `<div class="pv-img"><img id="pv-img" src="${url}" alt="${esc(p.caption || 'Case photo')}"></div>
+      <div class="row nowrap pv-nav"><button class="btn sm ghost" type="button" id="pv-prev"${i ? '' : ' disabled'} aria-label="Previous photo">‹ Prev</button>
+        <span class="spacer tiny muted" id="pv-meta">${p.width}×${p.height} · ${fmtBytes(p.size || p.blob.size)} · ${esc(fmtDate(p.createdAt))}</span>
+        <button class="btn sm ghost" type="button" id="pv-next"${i < list.length - 1 ? '' : ' disabled'} aria-label="Next photo">Next ›</button></div>
+      <form class="form" id="pv-form"><label class="lbl" for="pv-cap">Caption <span class="opt">(optional)</span></label>
+        <textarea id="pv-cap" rows="2" maxlength="500" placeholder="Where, when, what it shows">${esc(p.caption)}</textarea>
+        <div class="row"><span class="spacer"></span><button class="btn sm primary" type="submit" id="pv-save">Save caption</button></div></form>
+      <div class="pv-acts"><a class="btn sm" id="pv-dl" href="${url}" download="${esc(photoFileName(p, i))}">⬇️ Save</a>
+        <button class="btn sm" type="button" id="pv-share">↗️ Share</button><button class="btn sm" type="button" id="pv-rev">🔍 Reverse search</button>
+        <button class="btn sm danger" type="button" id="pv-del">Delete</button></div>
+      <p class="tiny muted">Stored only on this phone. It leaves only if you save, share or upload it yourself.</p>`;
+    $('#pv-prev', ov).onclick = () => { i--; draw(); };
+    $('#pv-next', ov).onclick = () => { i++; draw(); };
+    $('#pv-form', ov).onsubmit = async e => {
+      e.preventDefault();
+      try { list[i] = await store.savePhotoCaption(p.id, $('#pv-cap', ov).value.trim()); } catch (er) { return alertDialog('Couldn’t save caption', er.message); }
+      toast('Caption saved ✓'); drawPhotos(caseId);
+    };
+    $('#pv-share', ov).onclick = () => sharePhoto(list[i], i);
+    $('#pv-rev', ov).onclick = () => reverseSearchPhoto(list[i], i);
+    $('#pv-del', ov).onclick = async () => {
+      if (!await confirmDialog('Delete this photo?', 'It will be removed from this phone. This can’t be undone (unless it’s in a backup).', 'Delete', true)) return;
+      await store.deletePhoto(p.id); list = list.filter(x => x.id !== p.id); state.casePhotos = list;
+      await load(); toast('Photo deleted');
+      if (!list.length) { await closeSheet(); render(); return; }
+      i = Math.min(i, list.length - 1); draw(); drawPhotos(caseId);
+    };
+  };
+  draw();
+}
+
 view.addEventListener('click', async e => {
   const ed = e.target.closest('[data-fedit]'), del = e.target.closest('[data-fdel]');
   if (ed) { const f = state.findings.find(x => x.id === ed.dataset.fedit); if (f) openFinding(f); }
@@ -916,7 +1048,8 @@ function renderSettings() {
     <div class="card">
       ${backupDue() ? '<div class="banner"><span>🛟</span><div class="spacer">Backup recommended: your data lives only on this phone.</div></div>' : ''}
       <div class="kv"><span class="muted">Last backup</span><span id="lastbk">${esc(lastBackupText())}</span></div>
-      <p class="small muted">Export saves a JSON file with your cases, findings, custom links, favorites, pins, broker statuses and opt-out details. Keep it somewhere private.</p>
+      <p class="small muted">Export saves a JSON file with your cases, findings, case photos, custom links, favorites, pins, broker statuses and opt-out details. Photos make the file bigger. Keep it somewhere private.</p>
+      <p class="tiny muted" id="set-storage"></p>
       <div class="row"><button class="btn primary" type="button" id="export">Export JSON</button><button class="btn" type="button" id="import">Import JSON</button></div>
       <input type="file" id="importfile" accept="application/json,.json" hidden>
     </div>
@@ -930,7 +1063,7 @@ function renderSettings() {
       <div class="kv"><span class="muted">Username sites</span><span id="n-sites">${U}</span></div>
       <div class="kv"><span class="muted">Data brokers</span><span id="n-brokers">${state.data.brokers.length}</span></div>
       <div class="kv"><span class="muted">My links</span><span>${state.links.length}</span></div>
-      <div class="kv"><span class="muted">Cases / findings</span><span>${state.cases.length} / ${state.findings.length}</span></div>
+      <div class="kv"><span class="muted">Cases / findings / photos</span><span>${state.cases.length} / ${state.findings.length} / ${Object.values(state.photoCounts).reduce((a, b) => a + b, 0)}</span></div>
       <p class="tiny muted">Use only for lawful purposes: auditing your own exposure, protecting family, or authorized research.</p>
     </div>
     <div class="endmark" id="end"></div>`;
@@ -939,8 +1072,10 @@ function renderSettings() {
   $('#export').onclick = doExport;
   $('#import').onclick = () => $('#importfile').click();
   $('#importfile').onchange = e => { const f = e.target.files[0]; e.target.value = ''; if (f) doImport(f); };
+  storageText().then(t => { if ($('#set-storage')) $('#set-storage').textContent = t; });
 }
 async function doExport() {
+  toast('Preparing backup…');
   const data = await store.exportAll();
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
   const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `third-eye-backup-${today()}.json`;
@@ -952,13 +1087,15 @@ async function doImport(file) {
   let data;
   try { data = JSON.parse(await file.text()); } catch { return alertDialog('Can’t read that file', 'It isn’t valid JSON.'); }
   if (!store.isBackup(data)) return alertDialog('Not a Third Eye backup', 'Choose a file exported from Third Eye’s Settings.');
-  const mode = await choiceDialog('Import backup', `${data.cases.length} cases, ${data.findings.length} findings, ${data.links.length} links, ${data.brokers.length} broker statuses.`,
+  const nPh = Array.isArray(data.photos) ? data.photos.length : 0;
+  const mode = await choiceDialog('Import backup', `${data.cases.length} cases, ${data.findings.length} findings, ${nPh} photos, ${data.links.length} links, ${data.brokers.length} broker statuses.`,
     [{ v: 'merge', label: 'Merge with this phone', primary: true }, { v: 'replace', label: 'Replace everything', danger: true }]);
   if (!mode) return;
   if (mode === 'replace' && !await confirmDialog('Replace all data?', 'Everything currently in Third Eye on this phone will be deleted first.', 'Replace', true)) return;
-  try { await store.importAll(data, mode); } catch (e) { return alertDialog('Import failed', String(e.message || e)); }
+  let r;
+  try { r = await store.importAll(data, mode); } catch (e) { return alertDialog('Import failed', String(e.message || e)); }
   await load(); applyTheme(state.settings.theme); render();
-  toast(`Imported ${data.cases.length} cases, ${data.findings.length} findings ✓`);
+  toast(`Imported ${data.cases.length} cases, ${data.findings.length} findings, ${r && r.photos || 0} photos ✓`);
 }
 
 // ---------- dialogs & sheets ----------
@@ -988,10 +1125,10 @@ function promptDialog(title, value = '', ok = 'OK', placeholder = '') {
   return p;
 }
 let sheetEl = null;
-function openSheet(html) {
+function openSheet(html, cls = 'sheet') {
   closeSheet(true);
   const ov = document.createElement('div'); ov.className = 'overlay';
-  ov.innerHTML = `<div class="sheet" role="dialog" aria-modal="true" aria-labelledby="sheet-title">${html}</div>`;
+  ov.innerHTML = `<div class="${cls}" role="dialog" aria-modal="true" aria-labelledby="sheet-title">${html}</div>`;
   ov.onclick = e => { if (e.target === ov || e.target.closest('[data-close]')) closeSheet(); };
   mroot.appendChild(ov); sheetEl = ov;
   history.pushState({ sheet: true }, '');
@@ -999,11 +1136,12 @@ function openSheet(html) {
 }
 function closeSheet(silent = false) {
   if (!sheetEl) return Promise.resolve();
-  sheetEl.remove(); sheetEl = null;
+  dropSheet();
   if (silent || !(history.state && history.state.sheet)) return Promise.resolve();
   return new Promise(res => { closeSheet.skip = res; history.back(); setTimeout(() => { if (closeSheet.skip === res) { closeSheet.skip = null; res(); } }, 600); });
 }
-addEventListener('popstate', () => { if (closeSheet.skip) { const r = closeSheet.skip; closeSheet.skip = null; r(); return; } if (sheetEl) { sheetEl.remove(); sheetEl = null; } });
+addEventListener('popstate', () => { if (closeSheet.skip) { const r = closeSheet.skip; closeSheet.skip = null; r(); return; } if (sheetEl) dropSheet(); });
+function dropSheet() { const s = sheetEl; sheetEl = null; s.remove(); if (s.onClose) try { s.onClose(); } catch { /* ignore */ } }
 addEventListener('keydown', e => { if (e.key === 'Escape' && sheetEl && !mroot.querySelector('.center')) closeSheet(); });
 
 // ---------- router ----------
@@ -1014,6 +1152,7 @@ function route() {
 }
 function render() {
   const { a, b } = route();
+  revokeGrid();
   const nav = a === 'case' ? 'cases' : a;
   $$('.bottomnav a').forEach(x => { const on = x.dataset.nav === nav; x.classList.toggle('active', on); on ? x.setAttribute('aria-current', 'page') : x.removeAttribute('aria-current'); });
   const titles = { tools: 'Tools', search: 'Search', cases: 'Cases', case: 'Case', removal: 'Removal', settings: 'Settings' };

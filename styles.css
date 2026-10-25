@@ -275,3 +275,20 @@ pre.tpl { white-space: pre-wrap; font: 14.5px/1.5 ui-monospace, "Roboto Mono", m
 .live .reslist { margin: 8px 0; }
 .small.ok { color: var(--ok); }
 #live-result { min-height: 1.4em; margin-top: 8px; }
+
+/* case photos (v1.2.0) */
+.photos { margin-top: 6px; }
+.photogrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: 8px; margin: 10px 0 6px; }
+.photogrid .empty { grid-column: 1 / -1; padding: 14px; }
+.ph { position: relative; aspect-ratio: 1; padding: 0; border: 1.5px solid var(--line); border-radius: 12px; overflow: hidden; background: var(--surface2); cursor: pointer; }
+.ph img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.ph .cap { position: absolute; left: 0; right: 0; bottom: 0; padding: 4px 6px; font-size: 12px; line-height: 1.25; text-align: left; color: #fff; background: linear-gradient(transparent, rgba(0,0,0,.75)); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ph:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+.sheet.viewer { max-width: none; height: 100vh; height: 100dvh; max-height: none; border-radius: 0; }
+.sheet.viewer .body { flex: 1; padding-bottom: calc(18px + env(safe-area-inset-bottom)); }
+.pv-img { display: grid; place-items: center; background: #000; border-radius: 12px; overflow: hidden; min-height: 200px; }
+.pv-img img { max-width: 100%; max-height: 58vh; max-height: 58dvh; object-fit: contain; display: block; }
+.pv-nav { align-items: center; margin-top: 6px; }
+.pv-nav .spacer { text-align: center; }
+.pv-acts { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 12px 0 8px; }
+.pv-acts .btn { text-decoration: none; justify-content: center; }
