@@ -1,0 +1,445 @@
+[
+ {
+  "name": "Whitepages",
+  "parent": null,
+  "opt_out_url": "https://www.whitepages.com/suppression-requests",
+  "url_status": 200,
+  "checked_at": "2026-10-25",
+  "requires": [
+   "listing URL",
+   "phone call (verification)"
+  ],
+  "turnaround": null,
+  "turnaround_source": null,
+  "covers": [
+   "411.com"
+  ],
+  "notes": "Loaded 200. Requirements per common guides, not confirmed on page. 411.com listed as Whitepages-owned by getghostprotocol.com/data-broker-opt-out-list (2026)"
+ },
+ {
+  "name": "Instant Checkmate",
+  "parent": "PeopleConnect",
+  "opt_out_url": "https://suppression.peopleconnect.us/login",
+  "url_status": "blocked-bot",
+  "checked_at": "2026-10-25",
+  "requires": [
+   "email"
+  ],
+  "turnaround": null,
+  "turnaround_source": null,
+  "covers": [],
+  "notes": "instantcheckmate.com/opt-out/ returned 403 Cloudflare 'Just a moment'. Guides (offlist.me people-search guide (2026)) say it routes to PeopleConnect Suppression Center (email + emailed verification link)."
+ },
+ {
+  "name": "Spokeo",
+  "parent": null,
+  "opt_out_url": "https://www.spokeo.com/optout",
+  "url_status": 200,
+  "checked_at": "2026-10-25",
+  "requires": [
+   "listing URL",
+   "email"
+  ],
+  "turnaround": null,
+  "turnaround_source": null,
+  "covers": [
+   "AnyWho (anywho.com/optout redirects here)"
+  ],
+  "notes": "anywho.com/optout redirected to spokeo.com/optout on check."
+ },
+ {
+  "name": "BeenVerified",
+  "parent": "BeenVerified",
+  "opt_out_url": "https://www.beenverified.com/app/optout/search",
+  "url_status": "blocked-bot",
+  "checked_at": "2026-10-25",
+  "requires": [
+   "search by name and state",
+   "email"
+  ],
+  "turnaround": null,
+  "turnaround_source": null,
+  "covers": [
+   "PeopleLooker",
+   "NeighborWho",
+   "Ownerly",
+   "NumberGuru"
+  ],
+  "notes": "Redirects to /svc/optout/search/ which returned 403. Sister brands per getghostprotocol.com/data-broker-opt-out-list (2026)"
+ },
+ {
+  "name": "Intelius",
+  "parent": "PeopleConnect",
+  "opt_out_url": "https://suppression.peopleconnect.us/login",
+  "url_status": "blocked-bot",
+  "checked_at": "2026-10-25",
+  "requires": [
+   "email"
+  ],
+  "turnaround": null,
+  "turnaround_source": null,
+  "covers": [
+   "Instant Checkmate",
+   "TruthFinder",
+   "US Search",
+   "ZabaSearch",
+   "Classmates"
+  ],
+  "notes": "intelius.com/opt-out returned 403; PeopleConnect suppression center loads 200."
+ },
+ {
+  "name": "PeopleFinders",
+  "parent": null,
+  "opt_out_url": "https://www.peoplefinders.com/manage",
+  "url_status": "blocked-bot",
+  "checked_at": "2026-10-25",
+  "requires": [],
+  "turnaround": null,
+  "turnaround_source": null,
+  "covers": [
+   "PublicRecordsNow",
+   "USA-People-Search"
+  ],
+  "notes": "Both /opt-out and /manage returned 403. offlist.me people-search guide (2026) lists /manage as current route; getghostprotocol.com/data-broker-opt-out-list (2026) lists /opt-out. offlist.me people-search guide (2026) says PublicRecordsNow has no current verified route. Parent unconfirmed."
+ },
+ {
+  "name": "TruthFinder",
+  "parent": "PeopleConnect",
+  "opt_out_url": "https://suppression.peopleconnect.us/login",
+  "url_status": "blocked-bot",
+  "checked_at": "2026-10-25",
+  "requires": [
+   "email"
+  ],
+  "turnaround": null,
+  "turnaround_source": null,
+  "covers": [],
+  "notes": "truthfinder.com/opt-out/ returned 403; per offlist.me people-search guide (2026) it forwards to PeopleConnect Suppression Center."
+ },
+ {
+  "name": "MyLife",
+  "parent": null,
+  "opt_out_url": "https://www.mylife.com/ccpa/index.pubview",
+  "url_status": "blocked-bot",
+  "checked_at": "2026-10-25",
+  "requires": [
+   "email"
+  ],
+  "turnaround": null,
+  "turnaround_source": null,
+  "covers": [],
+  "notes": "403 Cloudflare. getghostprotocol.com/data-broker-opt-out-list (2026) says there is no clean form and lists privacy@mylife.com; rated Hard. URL unconfirmed as current."
+ },
+ {
+  "name": "Radaris",
+  "parent": null,
+  "opt_out_url": "https://radaris.com/control/privacy",
+  "url_status": 200,
+  "checked_at": "2026-10-25",
+  "requires": [],
+  "turnaround": null,
+  "turnaround_source": null,
+  "covers": [],
+  "notes": "Loaded 200. getghostprotocol.com/data-broker-opt-out-list (2026) calls it 'notoriously sticky', expect to escalate. Requirements not confirmed."
+ },
+ {
+  "name": "FastPeopleSearch",
+  "parent": null,
+  "opt_out_url": "https://www.fastpeoplesearch.com/removal",
+  "url_status": "blocked-bot",
+  "checked_at": "2026-10-25",
+  "requires": [
+   "email",
+   "CAPTCHA"
+  ],
+  "turnaround": null,
+  "turnaround_source": null,
+  "covers": [],
+  "notes": "403. Same family as TruePeopleSearch per getghostprotocol.com/data-broker-opt-out-list (2026); requirements not confirmed on page."
+ },
+ {
+  "name": "TruePeopleSearch",
+  "parent": null,
+  "opt_out_url": "https://www.truepeoplesearch.com/removal",
+  "url_status": "blocked-bot",
+  "checked_at": "2026-10-25",
+  "requires": [
+   "email",
+   "CAPTCHA"
+  ],
+  "turnaround": null,
+  "turnaround_source": null,
+  "covers": [],
+  "notes": "403. getghostprotocol.com/data-broker-opt-out-list (2026) says it 're-lists fast'. Requirements not confirmed on page."
+ },
+ {
+  "name": "PeopleConnect Suppression Center",
+  "parent": "PeopleConnect",
+  "opt_out_url": "https://suppression.peopleconnect.us/login",
+  "url_status": 200,
+  "checked_at": "2026-10-25",
+  "requires": [
+   "email"
+  ],
+  "turnaround": null,
+  "turnaround_source": null,
+  "covers": [
+   "Intelius",
+   "Instant Checkmate",
+   "TruthFinder",
+   "US Search",
+   "ZabaSearch",
+   "Classmates",
+   "AnyWho (per getghostprotocol.com/data-broker-opt-out-list (2026); but anywho.com/optout now redirects to Spokeo)"
+  ],
+  "notes": "Loaded 200. Email + emailed verification link per offlist.me people-search guide (2026)."
+ },
+ {
+  "name": "US Search",
+  "parent": "PeopleConnect",
+  "opt_out_url": "https://suppression.peopleconnect.us/login",
+  "url_status": "blocked-bot",
+  "checked_at": "2026-10-25",
+  "requires": [
+   "email"
+  ],
+  "turnaround": null,
+  "turnaround_source": null,
+  "covers": [],
+  "notes": "ussearch.com/opt-out/ returned 403; covered by PeopleConnect per getghostprotocol.com/data-broker-opt-out-list (2026)."
+ },
+ {
+  "name": "Nuwber",
+  "parent": null,
+  "opt_out_url": "https://nuwber.com/removal/link",
+  "url_status": "unverified",
+  "checked_at": "2026-10-25",
+  "requires": [
+   "listing URL",
+   "email"
+  ],
+  "turnaround": null,
+  "turnaround_source": null,
+  "covers": [],
+  "notes": "Connection failed/timed out (curl code 000) twice; may be blocking. URL from getghostprotocol.com/data-broker-opt-out-list (2026)."
+ },
+ {
+  "name": "ThatsThem",
+  "parent": null,
+  "opt_out_url": "https://thatsthem.com/optout",
+  "url_status": "blocked-bot",
+  "checked_at": "2026-10-25",
+  "requires": [],
+  "turnaround": null,
+  "turnaround_source": null,
+  "covers": [],
+  "notes": "403."
+ },
+ {
+  "name": "Acxiom",
+  "parent": "Acxiom (IPG/Omnicom)",
+  "opt_out_url": "https://isapps.acxiom.com/optout/optout.aspx",
+  "url_status": 200,
+  "checked_at": "2026-10-25",
+  "requires": [],
+  "turnaround": null,
+  "turnaround_source": null,
+  "covers": [],
+  "notes": "Loaded 200. Marketing data broker, not people-search. Parent history not verified this session."
+ },
+ {
+  "name": "PeopleLooker",
+  "parent": "BeenVerified",
+  "opt_out_url": "https://www.peoplelooker.com/svc/optout/search/optouts",
+  "url_status": "blocked-bot",
+  "checked_at": "2026-10-25",
+  "requires": [
+   "search by name",
+   "email"
+  ],
+  "turnaround": "about 24 hours",
+  "turnaround_source": "vettedprivacy.com/peoplelooker-opt-out (2026)",
+  "covers": [],
+  "notes": "Official help article (support.peoplelooker.com) gives /f/optout/search: search name, select record, verify via email. On check it returned 404 behind Cloudflare and /opt-out returned 403 challenge. UPDATED by Third Eye build 2026-10-25: /f/optout/search now 404s; current form is /svc/optout/search/optouts (403 bot-block from curl, confirmed via search results)."
+ },
+ {
+  "name": "USPhoneBook",
+  "parent": null,
+  "opt_out_url": "https://www.usphonebook.com/removal",
+  "url_status": "blocked-bot",
+  "checked_at": "2026-10-25",
+  "requires": [],
+  "turnaround": null,
+  "turnaround_source": null,
+  "covers": [],
+  "notes": "/opt-out redirects to /removal, which returned 403. Opt-out has MOVED to /removal."
+ },
+ {
+  "name": "ClustrMaps",
+  "parent": null,
+  "opt_out_url": "https://clustrmaps.com/bl/opt-out",
+  "url_status": "unverified",
+  "checked_at": "2026-10-25",
+  "requires": [],
+  "turnaround": null,
+  "turnaround_source": null,
+  "covers": [],
+  "notes": "Connection failed (curl 000). URL from getghostprotocol.com/data-broker-opt-out-list (2026)."
+ },
+ {
+  "name": "SearchPeopleFree",
+  "parent": null,
+  "opt_out_url": "https://www.searchpeoplefree.com/opt-out",
+  "url_status": 200,
+  "checked_at": "2026-10-25",
+  "requires": [
+   "email",
+   "CAPTCHA",
+   "search by name"
+  ],
+  "turnaround": null,
+  "turnaround_source": null,
+  "covers": [],
+  "notes": "Loaded 200. Per offlist.me people-search guide (2026): name, email, CAPTCHA, then emailed link to a matching form."
+ },
+ {
+  "name": "CheckPeople",
+  "parent": null,
+  "opt_out_url": "https://checkpeople.com/opt-out",
+  "url_status": 200,
+  "checked_at": "2026-10-25",
+  "requires": [],
+  "turnaround": null,
+  "turnaround_source": null,
+  "covers": [],
+  "notes": "Loaded 200 (www redirects to bare domain)."
+ },
+ {
+  "name": "Addresses.com",
+  "parent": null,
+  "opt_out_url": "https://www.addresses.com/optout.php",
+  "url_status": "blocked-bot",
+  "checked_at": "2026-10-25",
+  "requires": [],
+  "turnaround": null,
+  "turnaround_source": null,
+  "covers": [],
+  "notes": "403. Parent unconfirmed."
+ },
+ {
+  "name": "AnyWho",
+  "parent": null,
+  "opt_out_url": "https://www.spokeo.com/optout",
+  "url_status": 200,
+  "checked_at": "2026-10-25",
+  "requires": [
+   "listing URL",
+   "email"
+  ],
+  "turnaround": null,
+  "turnaround_source": null,
+  "covers": [],
+  "notes": "MOVED: anywho.com/optout now redirects to spokeo.com/optout (also noted by offlist.me people-search guide (2026)). Older guides say PeopleConnect."
+ },
+ {
+  "name": "Advanced Background Checks",
+  "parent": null,
+  "opt_out_url": "https://www.actualpeoplesearch.com/opt-out",
+  "url_status": 200,
+  "checked_at": "2026-10-25",
+  "requires": [
+   "email",
+   "CAPTCHA"
+  ],
+  "turnaround": "within 48 hours",
+  "turnaround_source": "advancedbackgroundchecks.com/help (broker's own page)",
+  "covers": [],
+  "notes": "MOVED: advancedbackgroundchecks.com/removal returns 404; site's own help page points to actualpeoplesearch.com/opt-out (loaded 200)."
+ },
+ {
+  "name": "Smart Background Checks",
+  "parent": null,
+  "opt_out_url": "https://www.smartbackgroundchecks.com/remove",
+  "url_status": 200,
+  "checked_at": "2026-10-25",
+  "requires": [],
+  "turnaround": null,
+  "turnaround_source": null,
+  "covers": [],
+  "notes": "/optout redirects to /remove (moved)."
+ },
+ {
+  "name": "PeekYou",
+  "parent": null,
+  "opt_out_url": "https://www.peekyou.com/about/contact/optout/",
+  "url_status": 200,
+  "checked_at": "2026-10-25",
+  "requires": [],
+  "turnaround": null,
+  "turnaround_source": null,
+  "covers": [],
+  "notes": "Loaded 200."
+ },
+ {
+  "name": "ZabaSearch",
+  "parent": "PeopleConnect",
+  "opt_out_url": "https://suppression.peopleconnect.us/login",
+  "url_status": "blocked-bot",
+  "checked_at": "2026-10-25",
+  "requires": [
+   "email"
+  ],
+  "turnaround": null,
+  "turnaround_source": null,
+  "covers": [],
+  "notes": "zabasearch.com/block_records/ returned 403; listed under PeopleConnect by getghostprotocol.com/data-broker-opt-out-list (2026)."
+ },
+ {
+  "name": "Pipl",
+  "parent": null,
+  "opt_out_url": "https://pipl.com/personal-information-removal-request",
+  "url_status": 200,
+  "checked_at": "2026-10-25",
+  "requires": [],
+  "turnaround": null,
+  "turnaround_source": null,
+  "covers": [],
+  "notes": "Loaded 200."
+ },
+ {
+  "name": "LexisNexis",
+  "parent": "RELX",
+  "opt_out_url": "https://consumer.risk.lexisnexis.com/opt",
+  "url_status": 200,
+  "checked_at": "2026-10-25",
+  "requires": [],
+  "turnaround": null,
+  "turnaround_source": null,
+  "covers": [],
+  "notes": "optout.lexisnexis.com redirects here; loaded 200."
+ },
+ {
+  "name": "Epsilon",
+  "parent": "Publicis Groupe",
+  "opt_out_url": "https://legal.epsilon.com/dsr/",
+  "url_status": 200,
+  "checked_at": "2026-10-25",
+  "requires": [],
+  "turnaround": null,
+  "turnaround_source": null,
+  "covers": [],
+  "notes": "epsilon.com/us/consumer-preference-center returned 404; legal.epsilon.com/dsr/ loads 200 but was not confirmed as the official opt-out via search. Treat as unverified route."
+ },
+ {
+  "name": "Oracle Advertising",
+  "parent": null,
+  "opt_out_url": null,
+  "url_status": "unverified",
+  "checked_at": "2026-10-25",
+  "requires": [],
+  "turnaround": null,
+  "turnaround_source": null,
+  "covers": [],
+  "notes": "Oracle shut down its advertising/data business (2024); old privacy URL now redirects to oracle.com/contracts/data-services/. No opt-out form found."
+ }
+]
