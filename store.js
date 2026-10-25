@@ -95,6 +95,16 @@ export async function getSettings() {
 }
 export async function saveSettings(patch) { const value = { ...(await getSettings()), ...patch }; await put('settings', { key: 'settings', value }); return value; }
 
+// ---- live check server (URL + API key). Kept in its own record, so it is NEVER included in
+// JSON backups and never leaves this phone except as the Authorization header to that server.
+export const LIVE_DEFAULT_URL = 'https://161-153-34-102.sslip.io';
+export async function getLive() {
+  const rec = await get('settings', 'live');
+  const v = rec ? rec.value : {};
+  return { url: str(v.url) || LIVE_DEFAULT_URL, key: str(v.key) };
+}
+export async function saveLive(patch) { const value = { ...(await getLive()), ...patch }; await put('settings', { key: 'live', value }); return value; }
+
 // ---- backup
 export async function exportAll() {
   const [links, cases, findings, brokers, settings] = await Promise.all([listLinks(), listCases(), listFindings(), listBrokerStatus(), getSettings()]);

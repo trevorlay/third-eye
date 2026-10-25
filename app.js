@@ -1,7 +1,7 @@
 import * as store from './store.js';
 import { BROKER_STATUSES } from './store.js';
 
-const VERSION = '1.0.0';
+const VERSION = '1.1.0';
 const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const view = $('#view');
@@ -13,6 +13,7 @@ const state = {
   uc: { u: '', marks: {}, filter: 'all' },
   dork: { name: '', place: '', user: '', email: '', phone: '', site: '', ft: 'pdf', c_exact: '', c_site: '', c_intitle: '', c_inurl: '', c_intext: '', c_ft: '', c_ex: '', c_extra: '' },
   img: { url: '' },
+  live: { url: store.LIVE_DEFAULT_URL, key: '' }, liveJobs: { username: null, email: null },
   caseQ: '', showArchived: false, brokerFilter: 'all', tplBroker: '', tplOpen: false,
 };
 
@@ -72,6 +73,7 @@ async function loadStatic() {
 async function load() {
   let bs;
   [state.links, state.cases, state.findings, bs, state.settings] = await Promise.all([store.listLinks(), store.listCases(), store.listFindings(), store.listBrokerStatus(), store.getSettings()]);
+  state.live = await store.getLive();
   state.brokerStatus = new Map(bs.map(x => [x.id, x]));
   updateBadge();
 }
@@ -271,7 +273,7 @@ function renderSearch(tab) {
   view.innerHTML = `<nav class="tabs" aria-label="Search tools">${STABS.map(([id, l]) => `<a href="#/search/${id}" class="${id === tab ? 'on' : ''}" data-stab="${id}">${l}</a>`).join('')}</nav>
     <div id="spane"></div>
     <details class="card note small" id="cors-note"><summary><b>Why doesn’t Third Eye check sites automatically?</b></summary>
-      <p>Browsers block web pages from reading other sites’ responses (CORS), so a phone-only app can’t run live Sherlock- or Holehe-style checks. Doing that needs a small server, which is planned for a later version. For now each link opens the real site and you mark what you see. Nothing is sent anywhere until you tap a link.</p></details>
+      <p>Browsers block web pages from reading other sites’ responses (CORS), so a phone-only app can’t run live Sherlock- or Holehe-style checks. Live checks need a small server: set yours up in Settings → Live check server to get “Run live check” buttons for usernames (Sherlock) and emails (Holehe). Without it, each link opens the real site and you mark what you see. Nothing is sent anywhere until you tap a link or start a live check.</p></details>
     <div class="endmark" id="end"></div>`;
   ({ builder: paneBuilder, usernames: paneUsernames, dorks: paneDorks, image: paneImage })[tab]($('#spane'));
 }
@@ -289,11 +291,13 @@ function paneBuilder(el) {
       <div class="row"><button class="btn primary" type="submit" id="bgo">${ICONS.search} Build searches</button></div>
       <div class="err" id="berr">${esc(err)}</div>
     </form>
+    ${b.kind === 'email' && v && !err ? liveEmailCard(v) : ''}
     ${res.length ? `<div class="row"><span class="resultcount spacer" id="bcount">${res.length} searches for <b>${esc(v)}</b></span><button class="btn sm" type="button" id="bsave">${ICONS.save} Save to case</button></div>
     <div class="reslist" id="bres">${res.map((r, i) => `<div class="res" data-res="${i}"><div class="tx"><div class="nm">${esc(r.name)}</div><div class="u mono">${esc(host(r.url))}</div></div>
       <button class="btn sm ghost" type="button" data-copy="${esc(r.url)}" aria-label="Copy ${esc(r.name)} link">${ICONS.copy}</button>${ext(r.url, 'Open ' + ICONS.open, 'btn sm')}</div>`).join('')}</div>` : ''}`;
   $$('[data-kind]', el).forEach(c => c.onclick = () => { b.kind = c.dataset.kind; b.q = ''; paneBuilder(el); $('#bq').focus(); });
   $('#bform').onsubmit = e => { e.preventDefault(); b.q = $('#bq').value; b.place = $('#bplace') ? $('#bplace').value : ''; paneBuilder(el); const r = $('#bres'); if (r) r.scrollIntoView({ block: 'nearest' }); };
+  wireLiveEmail(v);
   if ($('#bsave')) $('#bsave').onclick = () => saveToCase({
     text: `${k.label} search: ${v}${b.place ? ` (${b.place.trim()})` : ''}\n` + res.map(r => `• ${r.name}: ${r.url}`).join('\n'),
     url: res[0].url, source: 'Search builder', tags: [b.kind],
@@ -314,7 +318,7 @@ function paneUsernames(el) {
     <form class="form" id="uform" novalidate><label class="lbl" for="uq">Username</label>
       <div class="row nowrap"><input type="text" id="uq" class="spacer" value="${esc(uc.u)}" placeholder="e.g. janedoe42" autocomplete="off" autocapitalize="off" spellcheck="false"><button class="btn primary" id="ugo" type="submit">Check</button></div>
       <div class="err" id="uerr"></div></form>
-    ${u ? `<div class="stickybar"><div class="tally" id="tally"><span class="f">✓ <b>${counts.found}</b> found</span><span>✗ <b>${counts.notfound}</b> not found</span><span>? <b>${counts.unsure}</b> unsure</span><span class="muted">${U.sites.length - marked} left</span></div>
+    ${u ? `${liveUserCard(u)}<div class="stickybar"><div class="tally" id="tally"><span class="f">✓ <b>${counts.found}</b> found</span><span>✗ <b>${counts.notfound}</b> not found</span><span>? <b>${counts.unsure}</b> unsure</span><span class="muted">${U.sites.length - marked} left</span></div>
       <div class="row"><button class="btn sm primary" id="usave" type="button"${marked ? '' : ' disabled'}>${ICONS.save} Save results</button><button class="btn sm ghost" id="uclear" type="button"${marked ? '' : ' disabled'}>Clear marks</button></div></div>
     <div class="filters">${chip('all', 'All')}${chip('unmarked', 'Unmarked')}${chip('found', 'Found')}${chip('unsure', 'Unsure')}${chip('notfound', 'Not found')}</div>
     <div id="ulist">${groups.map(g => `<h2>${esc(g.name)}</h2><div class="reslist">${g.items.map(s => siteRow(s, uc.marks[s.i])).join('')}</div>`).join('') || '<div class="empty">No sites in this filter.</div>'}</div>` : ''}`;
@@ -325,6 +329,7 @@ function paneUsernames(el) {
     uc.u = nv; paneUsernames(el);
   };
   if (!u) return;
+  wireLiveUser(u);
   $$('[data-ucf]', el).forEach(c => c.onclick = () => { uc.filter = c.dataset.ucf; paneUsernames(el); });
   $('#uclear').onclick = async () => { if (await confirmDialog('Clear all marks?', 'This resets found / not found / unsure for every site.', 'Clear')) { uc.marks = {}; paneUsernames(el); } };
   $('#usave').onclick = () => {
@@ -692,14 +697,214 @@ function renderRemoval() {
   };
 }
 async function saveBroker(id, patch, redraw = true) {
-  const rec = await store.saveBrokerStatus({ ...stOf(id), ...patch, id });
-  state.brokerStatus.set(id, rec); updateBadge();
+  // Update in-memory state first so quick successive edits (URL, then notes) never overwrite each other.
+  const next = { ...stOf(id), ...patch, id }; state.brokerStatus.set(id, next);
+  const rec = await store.saveBrokerStatus(next);
+  if (state.brokerStatus.get(id) === next) state.brokerStatus.set(id, rec);
+  updateBadge();
   if (redraw) {
     const old = $(`[data-broker="${CSS.escape(id)}"]`), b = state.data.brokers.find(x => x.id === id);
     if (old && b) { const wasOpen = old.querySelector('details').open; old.outerHTML = brokerHTML(b); if (wasOpen) $(`[data-broker="${CSS.escape(id)}"] details`).open = true; }
   }
 }
 function refreshRemovalStats() { const y = scrollY; renderRemoval(); scrollTo(0, y); }
+
+
+// ---------- LIVE CHECKS (optional server running Sherlock + Holehe) ----------
+// The app works fully offline without this. The server URL and API key live only in IndexedDB
+// on this phone (not in backups). Requests go only to that server (CSP connect-src allows only it).
+const LIVE_NOISY = ['f3.cool', 'tiktok', 'pinterest', 'venmo', 'cashapp', 'snapchat', 'periscope', 'clubhouse', 'vero', 'trello', 'threads', 'blogger', 'tumblr', 'omg.lol'];
+const LIVE_WARN = 'Results can include false positives, and many sites block the server: open each link to confirm.';
+const liveReady = () => !!(state.live.key && state.live.url);
+function liveOrigin(u) { try { const x = new URL(u); return x.protocol === 'https:' ? x.origin : ''; } catch { return ''; } }
+async function liveFetch(path, { method = 'GET', body = null, auth = true, timeout = 15000 } = {}) {
+  const origin = liveOrigin(state.live.url);
+  if (!origin) throw new Error('The server URL must start with https://');
+  const ctl = new AbortController(), t = setTimeout(() => ctl.abort(), timeout);
+  const headers = {};
+  if (auth) headers.Authorization = 'Bearer ' + state.live.key;
+  if (body) headers['Content-Type'] = 'application/json';
+  let r;
+  try {
+    r = await fetch(origin + path, { method, headers, body: body ? JSON.stringify(body) : undefined, mode: 'cors', credentials: 'omit',
+      cache: 'no-store', referrerPolicy: 'no-referrer', signal: ctl.signal });
+  } catch (e) {
+    throw new Error(e.name === 'AbortError' ? 'The server took too long to answer.' : 'Can\u2019t reach the live check server. Check the URL and your connection.');
+  } finally { clearTimeout(t); }
+  let data = null; try { data = await r.json(); } catch { /* not JSON */ }
+  if (!r.ok) {
+    const d = data && typeof data.detail === 'string' ? data.detail : '';
+    const err = new Error(r.status === 422 ? 'The server can\u2019t check that value. Check the spelling.' : r.status === 401 ? 'The server rejected the API key. Check it in Settings.' : r.status === 429 ? (d || 'Too many checks right now.') + ' Try again later.' : d || `Server error (${r.status}).`);
+    err.status = r.status; throw err;
+  }
+  return data;
+}
+async function liveNeedsKey() {
+  const v = await choiceDialog('Set up live checks', 'Live checks run Sherlock and Holehe on your own server. To use them, open Settings \u2192 Live check server, paste the API key from your server, and tap Test connection. Without a server, everything else in Third Eye keeps working offline.',
+    [{ v: 'settings', label: 'Open Settings', primary: true }]);
+  if (v === 'settings') location.hash = '#/settings';
+}
+function wireLiveUser(u) {
+  if ($('#ulive')) $('#ulive').onclick = () => startLive('username', u);
+  if ($('#ulive-save')) $('#ulive-save').onclick = () => saveLiveResults(state.liveJobs.username);
+}
+function wireLiveEmail(v) {
+  if ($('#elive')) $('#elive').onclick = () => startLive('email', v);
+  if ($('#elive-save')) $('#elive-save').onclick = () => saveLiveResults(state.liveJobs.email);
+}
+// Progress updates replace only the live card, so typing elsewhere on the page is never interrupted.
+// When a check finishes, the whole pane re-renders (to show new marks) unless you're typing.
+function liveRerender(full = false) {
+  const el = $('#spane'); if (!el || route().a !== 'search') return;
+  const isU = !!$('#ulive-card'), isE = !!$('#elive-card');
+  if (!isU && !isE) return;
+  const ae = document.activeElement, typing = ae && el.contains(ae) && /^(INPUT|SELECT|TEXTAREA)$/.test(ae.tagName);
+  if (full && !typing) { const y = scrollY; (isU ? paneUsernames : paneBuilder)(el); scrollTo(0, y); return; }
+  if (isU) { const u = cleanInput('username', state.uc.u); $('#ulive-card').outerHTML = liveUserCard(u); wireLiveUser(u); }
+  else { const v = cleanInput('email', state.builder.q); $('#elive-card').outerHTML = liveEmailCard(v); wireLiveEmail(v); }
+}
+async function startLive(kind, query) {
+  if (!liveReady()) return liveNeedsKey();
+  if (kind === 'username' && !/^[A-Za-z0-9._-]{1,40}$/.test(query)) return alertDialog('Can\u2019t live-check this', 'Live checks accept usernames of up to 40 letters, digits, dots, dashes and underscores.');
+  const cur = state.liveJobs[kind];
+  if (cur && cur.query === query && ['starting', 'queued', 'running'].includes(cur.status)) return;
+  const job = { kind, query, status: 'starting', progress: { done: 0, total: null, counts: {} }, results: [], error: '', applied: false, t0: Date.now() };
+  state.liveJobs[kind] = job; liveRerender();
+  try {
+    const r = await liveFetch('/api/' + kind, { method: 'POST', body: kind === 'username' ? { username: query } : { email: query } });
+    job.id = r.job_id; job.status = r.status || 'queued';
+  } catch (e) { job.status = 'error'; job.error = e.message; liveRerender(); return; }
+  liveRerender();
+  let fails = 0;
+  while (state.liveJobs[kind] === job) {
+    await new Promise(r => setTimeout(r, 2000));
+    if (state.liveJobs[kind] !== job) return;
+    try {
+      const j = await liveFetch('/api/jobs/' + encodeURIComponent(job.id)); fails = 0;
+      Object.assign(job, { status: j.status, progress: j.progress || job.progress, results: Array.isArray(j.results) ? j.results : [], error: j.error || '', duration: j.duration_s, position: j.position });
+    } catch (e) {
+      if (e.status === 401 || e.status === 404 || ++fails >= 4) { job.status = 'error'; job.error = e.message; }
+    }
+    if (job.status === 'done' || job.status === 'error') {
+      if (kind === 'username') applyLiveMarks(job);
+      liveRerender(true); toast(job.status === 'done' ? 'Live check finished \u2713' : 'Live check failed'); return;
+    }
+    liveRerender();
+  }
+}
+function liveFound(job) { return job.results.filter(r => job.kind === 'username' ? r.status === 'found' : r.exists); }
+const isNoisy = r => LIVE_NOISY.some(n => (r.site || '').toLowerCase().includes(n) || host(r.url || '').includes(n));
+function siteHost(u) { return host(u).replace(/^(m|mobile)\./, ''); }
+function applyLiveMarks(job) {
+  // Mark sites from the existing checklist that Sherlock reported: found, or unsure for noisy sites. Never overrides a hand mark.
+  const uc = state.uc; if (job.applied || cleanInput('username', uc.u) !== job.query) return;
+  const U = state.data.usernames.sites, u = encodeURIComponent(job.query);
+  const byName = new Map(U.map((s, i) => [s.name.toLowerCase().replace(/[^a-z0-9]/g, ''), i]));
+  const byUrl = new Map(U.map((s, i) => [siteHost(s.url.replace(/\{u\}/g, u)) + '|' + s.url.replace(/\{u\}/g, u).toLowerCase().replace(/^https?:\/\/(www\.)?/, '').replace(/\/$/, ''), i]));
+  let n = 0;
+  for (const r of liveFound(job)) {
+    const k = String(r.url || '').toLowerCase().replace(/^https?:\/\/(www\.)?/, '').replace(/\/$/, '');
+    let i = byUrl.get(siteHost(r.url) + '|' + k);
+    if (i === undefined) i = byName.get(String(r.site).toLowerCase().replace(/[^a-z0-9]/g, ''));
+    if (i === undefined || uc.marks[i]) continue;
+    uc.marks[i] = isNoisy(r) ? 'unsure' : 'found'; n++;
+  }
+  job.applied = true; job.marked = n;
+}
+function liveStatusHTML(job, what) {
+  if (!job) return '';
+  if (job.status === 'error') return `<div class="err live-err" id="${what}-lerr">${esc(job.error || 'The live check failed.')}</div>`;
+  if (job.status !== 'done') {
+    const p = job.progress || {};
+    const msg = job.status === 'starting' ? 'Starting\u2026' : job.status === 'queued' ? `Queued${job.position ? ` (#${job.position})` : ''}\u2026`
+      : p.total ? `Checked ${p.done} of ${p.total} ${what === 'u' ? 'sites' : 'modules'}\u2026` : 'Running\u2026';
+    return `<div class="liveprog" id="${what}-lprog" role="status"><progress max="${p.total || 1}" value="${p.total ? p.done : 0}" aria-label="Live check progress"></progress><span class="small muted">${esc(msg)} ${Math.round((Date.now() - job.t0) / 1000)} s</span></div>`;
+  }
+  return '';
+}
+function liveUserCard(u) {
+  const job = state.liveJobs.username, mine = job && job.query === u ? job : null;
+  const running = mine && !['done', 'error'].includes(mine.status);
+  let out = '';
+  if (mine && mine.status === 'done') {
+    const f = liveFound(mine), c = mine.progress.counts || {};
+    out = `<p class="small" id="ulive-sum"><b>${f.length}</b> possible accounts on ${mine.progress.total || '?'} sites in ${mine.duration ?? '?'} s. ${c.blocked || 0} blocked the server, ${c.error || 0} errors.${mine.marked ? ` Marked ${mine.marked} in the list below.` : ''}</p>
+      ${f.length ? `<div class="reslist" id="ulive-res">${f.map(r => `<div class="res st-${isNoisy(r) ? 'unsure' : 'found'}" data-live="${esc(r.site)}"><div class="tx"><div class="nm">${esc(r.site)}${isNoisy(r) ? ' <span class="tiny muted">often a false positive</span>' : ''}</div><div class="u mono">${esc(host(r.url))}</div></div>${isHttp(r.url) ? ext(r.url, 'Open', 'btn sm') : ''}</div>`).join('')}</div>
+      <div class="row"><button class="btn sm" type="button" id="ulive-save">${ICONS.save} Save live results</button></div>` : '<p class="small muted">No accounts reported.</p>'}`;
+  }
+  return `<div class="card live" id="ulive-card"><div class="row nowrap"><div class="spacer"><b>Live check</b> <span class="tiny muted">Sherlock on your server</span></div>
+      <button class="btn sm primary" type="button" id="ulive"${running ? ' disabled' : ''}>${running ? 'Checking\u2026' : mine ? 'Run again' : 'Run live check'}</button></div>
+    <p class="tiny muted">${liveReady() ? 'Sends this username to your live check server only.' : 'Needs your server\u2019s API key (Settings).'} ${LIVE_WARN}</p>
+    ${liveStatusHTML(mine, 'u')}${out}</div>`;
+}
+function liveEmailCard(v) {
+  const job = state.liveJobs.email, mine = job && job.query === v ? job : null;
+  const running = mine && !['done', 'error'].includes(mine.status);
+  let out = '';
+  if (mine && mine.status === 'done') {
+    const f = liveFound(mine), c = mine.progress.counts || {};
+    const hint = r => [r.emailrecovery && `recovery: ${r.emailrecovery}`, r.phoneNumber && `phone: ${r.phoneNumber}`].filter(Boolean).join(' · ');
+    out = `<p class="small" id="elive-sum">Used on <b>${f.length}</b> of ${mine.results.length} sites checked in ${mine.duration ?? '?'} s. ${c.rate_limited || 0} were blocked or rate-limited, so “not used” is not certain.</p>
+      ${f.length ? `<div class="reslist" id="elive-res">${f.map(r => `<div class="res st-found" data-live="${esc(r.site)}"><div class="tx"><div class="nm">${esc(r.site)}</div>${hint(r) ? `<div class="u mono">${esc(hint(r))}</div>` : ''}</div>${/^[a-z0-9.-]+\.[a-z]{2,}$/i.test(r.site) ? ext('https://' + r.site, 'Open', 'btn sm') : ''}</div>`).join('')}</div>
+      <div class="row"><button class="btn sm" type="button" id="elive-save">${ICONS.save} Save live results</button></div>` : '<p class="small muted">No sites reported this email as used.</p>'}`;
+  }
+  return `<div class="card live" id="elive-card"><div class="row nowrap"><div class="spacer"><b>Live check</b> <span class="tiny muted">Holehe on your server</span></div>
+      <button class="btn sm primary" type="button" id="elive"${running ? ' disabled' : ''}>${running ? 'Checking\u2026' : mine ? 'Run again' : 'Run live check'}</button></div>
+    <p class="tiny muted">${liveReady() ? 'Sends this email to your live check server only. Holehe runs without its password-reset modules, so no reset emails are triggered.' : 'Needs your server\u2019s API key (Settings).'} ${LIVE_WARN}</p>
+    ${liveStatusHTML(mine, 'e')}${out}</div>`;
+}
+function saveLiveResults(job) {
+  const f = liveFound(job);
+  if (job.kind === 'username') {
+    const c = job.progress.counts || {};
+    return saveToCase({ text: `Live Sherlock check for “${job.query}”: ${f.length} possible accounts (${job.progress.total} sites, ${c.blocked || 0} blocked, ${c.error || 0} errors). Unverified: may include false positives.\n` + f.map(r => `• ${r.site}: ${r.url}${isNoisy(r) ? ' (often a false positive)' : ''}`).join('\n'),
+      url: f[0] ? f[0].url : '', source: 'Live check (Sherlock)', tags: ['username', 'live', job.query.toLowerCase()] });
+  }
+  const c = job.progress.counts || {};
+  return saveToCase({ text: `Live Holehe check for ${job.query}: used on ${f.length} sites (${job.results.length} checked, ${c.rate_limited || 0} blocked or rate-limited). Unverified.\n` + f.map(r => `• ${r.site}${r.emailrecovery ? ` (recovery ${r.emailrecovery})` : ''}${r.phoneNumber ? ` (phone ${r.phoneNumber})` : ''}`).join('\n'),
+    url: '', source: 'Live check (Holehe)', tags: ['email', 'live'] });
+}
+function liveSettingsHTML() {
+  const L = state.live;
+  return `<h2>Live check server</h2>
+    <div class="card" id="live-settings">
+      <p class="small muted">Optional. Your own server runs Sherlock (usernames) and Holehe (emails) for the “Run live check” buttons. The key is stored only in this browser on this phone and is not included in backups.</p>
+      <form class="form" id="liveform" novalidate autocomplete="off">
+        <label class="lbl" for="live-url">Server URL</label><input type="url" id="live-url" value="${esc(L.url)}" placeholder="${esc(store.LIVE_DEFAULT_URL)}" autocomplete="off" autocapitalize="off" spellcheck="false" inputmode="url">
+        <label class="lbl" for="live-key">API key</label><input type="password" id="live-key" value="" placeholder="${L.key ? '•••••••• saved (type to replace)' : 'Paste the key from your server'}" autocomplete="off" autocapitalize="off" spellcheck="false">
+        <p class="tiny muted" id="live-keystate">${L.key ? 'A key is saved on this phone.' : 'No key saved: live checks are off.'}</p>
+        <div class="row"><button class="btn primary" type="submit" id="live-save">Save</button><button class="btn" type="button" id="live-test">Test connection</button>${L.key ? '<button class="btn ghost danger" type="button" id="live-forget">Remove key</button>' : ''}</div>
+        <div class="small" id="live-result" role="status"></div>
+      </form>
+    </div>`;
+}
+function wireLiveSettings() {
+  const saveForm = async () => {
+    const url = $('#live-url').value.trim() || store.LIVE_DEFAULT_URL, key = $('#live-key').value.trim();
+    if (!liveOrigin(url)) { $('#live-result').textContent = 'The server URL must start with https://'; return false; }
+    if (key && !/^[A-Za-z0-9_-]{20,200}$/.test(key)) { $('#live-result').textContent = 'That key doesn\u2019t look right (letters, digits, - and _ only).'; return false; }
+    state.live = await store.saveLive(key ? { url: liveOrigin(url), key } : { url: liveOrigin(url) });
+    return true;
+  };
+  $('#liveform').onsubmit = async e => { e.preventDefault(); if (await saveForm()) { renderSettings(); toast('Live check server saved \u2713'); } };
+  $('#live-test').onclick = async () => {
+    const out = $('#live-result');
+    if (!await saveForm()) return;
+    $('#live-key').value = ''; $('#live-keystate').textContent = state.live.key ? 'A key is saved on this phone.' : 'No key saved: live checks are off.';
+    out.className = 'small'; out.textContent = 'Testing\u2026';
+    try {
+      const h = await liveFetch('/api/health', { auth: false });
+      if (!h || !h.ok) throw new Error('The server answered, but not like a Third Eye server.');
+      if (!state.live.key) { out.textContent = `Server reachable (v${h.version || '?'}), but no API key is saved.`; return; }
+      try { await liveFetch('/api/jobs/connection-test-0000'); } catch (e) { if (e.status !== 404) throw e; }
+      out.className = 'small ok'; out.textContent = `Connected \u2713 Server v${h.version || '?'}, key accepted. ${h.running || 0} running, ${h.queued || 0} queued.`;
+    } catch (e) { out.className = 'small err'; out.textContent = e.message; }
+  };
+  if ($('#live-forget')) $('#live-forget').onclick = async () => {
+    if (!await confirmDialog('Remove API key?', 'Live checks will be off on this phone until you add a key again.', 'Remove', true)) return;
+    state.live = await store.saveLive({ key: '' }); renderSettings(); toast('Key removed');
+  };
+}
 
 // ---------- SETTINGS ----------
 function renderSettings() {
@@ -715,8 +920,9 @@ function renderSettings() {
       <div class="row"><button class="btn primary" type="button" id="export">Export JSON</button><button class="btn" type="button" id="import">Import JSON</button></div>
       <input type="file" id="importfile" accept="application/json,.json" hidden>
     </div>
+    ${liveSettingsHTML()}
     <h2>Privacy</h2>
-    <div class="card small">No accounts, analytics, trackers, external scripts or fonts. Everything is stored in this browser (IndexedDB) on this phone. The only network requests are the links you tap, which open in a new tab. Third Eye never contacts data brokers or checks sites for you.</div>
+    <div class="card small">No accounts, analytics, trackers, external scripts or fonts. Everything is stored in this browser (IndexedDB) on this phone. The only network requests are the links you tap, which open in a new tab, and live checks you start yourself, which go only to your own live check server. Third Eye never contacts data brokers.</div>
     <h2>About</h2>
     <div class="card small">
       <div class="kv"><span class="muted">Version</span><span id="version">${VERSION}</span></div>
@@ -729,6 +935,7 @@ function renderSettings() {
     </div>
     <div class="endmark" id="end"></div>`;
   $$('[data-theme-set]').forEach(b => b.onclick = async () => { state.settings = await store.saveSettings({ theme: b.dataset.themeSet }); applyTheme(state.settings.theme); renderSettings(); });
+  wireLiveSettings();
   $('#export').onclick = doExport;
   $('#import').onclick = () => $('#importfile').click();
   $('#importfile').onchange = e => { const f = e.target.files[0]; e.target.value = ''; if (f) doImport(f); };
