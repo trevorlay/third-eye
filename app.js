@@ -1,7 +1,7 @@
 import * as store from './store.js';
 import { BROKER_STATUSES } from './store.js';
 
-const VERSION = '1.1.0';
+const VERSION = '1.1.1';
 const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const view = $('#view');
@@ -882,7 +882,7 @@ function wireLiveSettings() {
   const saveForm = async () => {
     const url = $('#live-url').value.trim() || store.LIVE_DEFAULT_URL, key = $('#live-key').value.trim();
     if (!liveOrigin(url)) { $('#live-result').textContent = 'The server URL must start with https://'; return false; }
-    if (key && !/^[A-Za-z0-9_-]{20,200}$/.test(key)) { $('#live-result').textContent = 'That key doesn\u2019t look right (letters, digits, - and _ only).'; return false; }
+    if (key && !/^[\x20-\x7E]{16,200}$/.test(key)) { $('#live-result').textContent = 'That key doesn\u2019t look right. Use 16 or more regular keyboard characters (letters, numbers, symbols and spaces are fine).'; return false; }
     state.live = await store.saveLive(key ? { url: liveOrigin(url), key } : { url: liveOrigin(url) });
     return true;
   };
