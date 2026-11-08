@@ -2,11 +2,11 @@
 // Async API: links, cases, findings, photos, broker statuses, settings, exportAll, importAll.
 const DB_NAME = 'third-eye';
 // v1: links, cases, findings, brokers, settings. v2 (app 1.2.0): adds 'photos' (Blob records, indexed by caseId).
-// Upgrades only ever ADD stores/indexes, so existing cases, findings and settings are kept as they are.
-const DB_VERSION = 2;
-const SCHEMA = 2; // backup format; schema 1 files (no photos) still import
+// v3 (1.4.0): adds privacy stores and broker recheck dates. Existing cases, findings and settings are retained.
+const DB_VERSION = 3;
+const SCHEMA = 3; // backup format; schema 1 files (no photos) still import
 
-const STORES = ['links', 'cases', 'findings', 'brokers'];
+const STORES = ['links', 'cases', 'findings', 'brokers', 'aliases', 'phones', 'personas', 'checklist'];
 export const BROKER_STATUSES = ['not started', 'submitted', 'confirmed removed', 'reappeared'];
 const DEFAULT_SETTINGS = {
   theme: 'dark', lastBackup: null, favs: [], pins: [], lastCaseId: null, hidePaid: false,
@@ -21,6 +21,9 @@ function openDB() {
     req.onupgradeneeded = () => {
       const db = req.result, tx = req.transaction;
       for (const s of STORES) if (!db.objectStoreNames.contains(s)) db.createObjectStore(s, { keyPath: 'id' });
+      // v3: enrich existing broker records in place without changing their statuses.
+      const cursor = tx.objectStore('brokers').openCursor();
+      cursor.onsuccess = () => { const c = cursor.result; if (c) { c.update(normBroker(c.value)); c.continue(); } };
       if (!db.objectStoreNames.contains('settings')) db.createObjectStore('settings', { keyPath: 'key' });
       const ps = db.objectStoreNames.contains('photos') ? tx.objectStore('photos') : db.createObjectStore('photos', { keyPath: 'id' });
       if (!ps.indexNames.contains('caseId')) ps.createIndex('caseId', 'caseId', { unique: false });
@@ -58,8 +61,31 @@ function normFinding(f) {
 }
 function normBroker(b) {
   return { id: str(b.id), status: BROKER_STATUSES.includes(b.status) ? b.status : 'not started', date: str(b.date), listingUrl: str(b.listingUrl),
+    optedOutDate: dateOnly(b.optedOutDate) || (b.status === 'confirmed removed' ? dateOnly(b.date) : ''),
+    recheckDate: Object.hasOwn(b, 'recheckDate') ? dateOnly(b.recheckDate) : addDays(dateOnly(b.date), 90),
     notes: str(b.notes), updatedAt: b.updatedAt || now() };
 }
+
+// v3 privacy records: explicit field allowlists also sanitize imported backups.
+const dateOnly = v => /^\d{4}-\d{2}-\d{2}$/.test(str(v)) && !isNaN(Date.parse(str(v))) ? str(v) : '';
+export function addDays(date, days = 90) { if (!dateOnly(date)) return ''; const d = new Date(date + 'T12:00:00Z'); d.setUTCDate(d.getUTCDate() + days); return d.toISOString().slice(0, 10); }
+const meta = r => ({ id: str(r.id) || uid(), createdAt: str(r.createdAt) || now(), updatedAt: str(r.updatedAt) || now() });
+function normAlias(r) { return { ...meta(r), address: str(r.address).slice(0,254), provider: ['Proton','Firefox Relay','SimpleLogin','other'].includes(r.provider) ? r.provider : 'other', site: str(r.site).slice(0,255), date: dateOnly(r.date), notes: str(r.notes).slice(0,4000), status: r.status === 'burned' ? 'burned' : 'active' }; }
+function normPhone(r) { return { ...meta(r), number: str(r.number).slice(0,60), provider: r.provider === 'Google Voice' ? 'Google Voice' : 'other', site: str(r.site).slice(0,255), date: dateOnly(r.date), notes: str(r.notes).slice(0,4000), status: r.status === 'burned' ? 'burned' : 'active' }; }
+function normPersona(r) { return { ...meta(r), firstName: str(r.firstName).slice(0,80), lastName: str(r.lastName).slice(0,80), birthday: dateOnly(r.birthday), city: str(r.city).slice(0,80), state: str(r.state).slice(0,40), interests: (Array.isArray(r.interests) ? r.interests : []).slice(0,10).map(x=>str(x).slice(0,80)), username: str(r.username).slice(0,80), aliasId: str(r.aliasId) }; }
+function normChecklist(r) { return { id: str(r.id), checked: !!r.checked, updatedAt: str(r.updatedAt) || now() }; }
+async function savePrivate(s, norm, r) { const old = r.id ? await get(s,r.id) : null; return put(s, norm({...old,...r,createdAt:old?.createdAt || r.createdAt,updatedAt:now()})); }
+export const listAliases = () => all('aliases');
+export const saveAlias = r => savePrivate('aliases',normAlias,r);
+export const deleteAlias = id => del('aliases',id);
+export const listPhones = () => all('phones');
+export const savePhone = r => savePrivate('phones',normPhone,r);
+export const deletePhone = id => del('phones',id);
+export const listPersonas = () => all('personas');
+export const savePersona = r => savePrivate('personas',normPersona,r);
+export const deletePersona = id => del('personas',id);
+export const listChecklist = () => all('checklist');
+export const saveChecklist = r => put('checklist',normChecklist({...r,updatedAt:now()}));
 
 // ---- links (user-added only; bundled tools live in data/tools.json)
 export const listLinks = async () => (await all('links')).sort((a, b) => a.name.localeCompare(b.name));
@@ -163,14 +189,15 @@ export async function exportAll() {
     const { blob, thumb, ...meta } = p;
     photos.push({ ...meta, data: await blobToB64(blob), thumbData: thumb instanceof Blob && thumb !== blob ? await blobToB64(thumb) : '' });
   }
-  return { app: 'third-eye', schema: SCHEMA, exportedAt: now(), links, cases, findings, brokers, photos, settings: portable };
+  const [aliases, phones, personas, checklist] = await Promise.all([listAliases(), listPhones(), listPersonas(), listChecklist()]);
+  return { app: 'third-eye', schema: SCHEMA, exportedAt: now(), links, cases, findings, brokers, photos, aliases, phones, personas, checklist, settings: portable };
 }
-export function isBackup(d) { return !!d && d.app === 'third-eye' && ['links', 'cases', 'findings', 'brokers'].every(k => Array.isArray(d[k])) && (d.photos === undefined || Array.isArray(d.photos)); }
+export function isBackup(d) { return !!d && d.app === 'third-eye' && ['links', 'cases', 'findings', 'brokers'].every(k => Array.isArray(d[k])) && ['photos','aliases','phones','personas','checklist'].every(k => d[k] === undefined || Array.isArray(d[k])); }
 
 // mode: 'merge' (newer copy of each record wins, by updatedAt) or 'replace' (wipe, then load).
 export async function importAll(data, mode = 'merge') {
   if (!isBackup(data)) throw new Error('This file is not a Third Eye backup.');
-  const norm = { links: normLink, cases: normCase, findings: normFinding, brokers: normBroker };
+  const norm = { links: normLink, cases: normCase, findings: normFinding, brokers: normBroker, aliases: normAlias, phones: normPhone, personas: normPersona, checklist: normChecklist };
   const cur = {};
   for (const s of STORES) cur[s] = mode === 'replace' ? new Map() : new Map((await all(s)).map(x => [x.id, x]));
   // Photos: decode base64 BEFORE opening the transaction (an await inside it would auto-commit it).
@@ -192,7 +219,7 @@ export async function importAll(data, mode = 'merge') {
   const counts = { added: 0, updated: 0, photos: 0 };
   for (const s of STORES) {
     const os = tx.objectStore(s); if (mode === 'replace') os.clear();
-    for (const rec of data[s]) {
+    for (const rec of data[s] || []) {
       if (!rec || !rec.id) continue;
       const old = cur[s].get(rec.id);
       if (!old || (rec.updatedAt || '') > (old.updatedAt || '')) { os.put(norm[s](rec)); old ? counts.updated++ : counts.added++; }

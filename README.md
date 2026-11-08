@@ -1,6 +1,6 @@
 # Third Eye
 
-An offline-first OSINT toolkit PWA: a tool launcher (57 tools), search and dork builders, a username checker, cases with on-device photos, and a data-broker removal tracker. Everything stays on your device. There are no accounts, analytics or external scripts.
+An offline-first OSINT toolkit PWA: a tool launcher (56 tools), search and dork builders, a username checker, cases with on-device photos, and a data-broker removal tracker. Records stay on your device; optional live checks and alias creation use your own server. There are no accounts, analytics or external scripts.
 
 **Open:** https://trevorlay.github.io/third-eye/ (on Android Chrome, use ⋮ → Install app)
 
@@ -10,4 +10,10 @@ An offline-first OSINT toolkit PWA: a tool launcher (57 tools), search and dork 
 
 **Cost badges and live tiles (v1.3):** tools whose results are paywalled show a gold $, and tools with some free results but a paid full report show ½$. "Hide paid" in the launcher hides the $ tools. The Sherlock and Holehe tiles now open the built-in live check, with a link to each project page.
 
-Only for lawful purposes, such as auditing your own exposure or protecting family. Version 1.3.1.
+Only for lawful purposes, such as auditing your own exposure or protecting family. Version 1.4.0.
+
+**Privacy tab (v1.4):** email alias and secondary-number trackers with search, edit and active/burned labels; optional SimpleLogin/Firefox Relay alias creation through your server; broker opted-out/re-check dates, progress and overdue list; a sourced Android device checklist; Firefox/uBlock Origin/AdNauseam guidance; and an offline random persona generator with save/copy/alias linking. No automated sign-ups or notifications. Marking burned is local only, not provider deactivation.
+
+IndexedDB upgrades in place to v3. Schema-3 backups include all privacy records and still import older backups, but never contain server/provider keys. Keep backups private: they are not encrypted. Alias creation sends the site/note to the provider after confirmation; provider keys stay on your server. Configure `SIMPLELOGIN_API_KEY` and/or `FIREFOX_RELAY_API_KEY` securely in the existing root-owned 0600 `/etc/thirdeye/thirdeye.env`, restart only `thirdeye.service`, then use Privacy → Aliases → Check providers. Free account quotas still apply.
+
+AdNauseam is listed for Firefox for Android 120+ (checked 2026-11-08). Use it instead of another ad blocker; Chrome on Android cannot run extensions. Noise does not guarantee privacy. Personas are only for low-stakes manual sign-ups, never banking/government or real-identity uses.

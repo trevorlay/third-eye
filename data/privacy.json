@@ -1,0 +1,25 @@
+{
+  "checkedAt": "2026-11-08",
+  "links": [
+    {"id":"proton","name":"Proton Pass aliases","url":"https://proton.me/pass/aliases"},
+    {"id":"relay","name":"Firefox Relay","url":"https://relay.firefox.com/"},
+    {"id":"simplelogin","name":"SimpleLogin","url":"https://simplelogin.io/"},
+    {"id":"voice","name":"Google Voice","url":"https://voice.google.com/"},
+    {"id":"firefox","name":"Firefox for Android","url":"https://www.mozilla.org/firefox/browsers/mobile/android/"},
+    {"id":"ublock","name":"uBlock Origin for Android","url":"https://addons.mozilla.org/en-US/android/addon/ublock-origin/"},
+    {"id":"adnauseam","name":"AdNauseam for Android","url":"https://addons.mozilla.org/en-US/android/addon/adnauseam/"},
+    {"id":"adnauseam-official","name":"AdNauseam official site","url":"https://adnauseam.io/"},
+    {"id":"adnauseam-faq","name":"AdNauseam FAQ","url":"https://github.com/dhowe/AdNauseam/wiki/FAQ"},
+    {"id":"relay-api","name":"Relay official API documentation","url":"https://mozilla.github.io/fx-private-relay/api_docs.html"},
+    {"id":"simplelogin-api","name":"SimpleLogin official API documentation","url":"https://github.com/simple-login/app/blob/master/docs/api.md"}
+  ],
+  "checklist": [
+    {"id":"advertising-id","title":"Delete or reset your advertising ID","text":"Settings → Privacy → Ads → Delete advertising ID (or Reset advertising ID). On some phones: Settings → Google → All services → Privacy & security → Ads. Labels vary by Android version and phone maker; search Settings for Ads. This does not stop all tracking.","url":"https://support.google.com/googleplay/android-developer/answer/6048248?hl=en"},
+    {"id":"timeline","title":"Turn off Timeline (formerly Location History)","text":"Google Account → Data & privacy → History settings → Timeline → Turn off. Delete existing visits separately in Google Maps → your profile → Your Timeline. Review every eligible device and any Timeline backup. Turning it off does not delete old data or stop other activity settings from saving location.","url":"https://support.google.com/accounts/answer/14200149?hl=en"},
+    {"id":"location","title":"Limit app location access","text":"Settings → Apps → choose an app → Permissions → Location → Allow only while using the app, Ask every time, or Don't allow. Turn off Use precise location when approximate is enough. Location-based features may work less well.","url":"https://support.google.com/android/answer/9431959?hl=en"},
+    {"id":"permissions","title":"Review app permissions","text":"Settings → Security & privacy → Privacy → Permission manager. Review camera, microphone, contacts, SMS and nearby devices; remove access apps do not need. Or use Settings → Apps → choose an app → Permissions. Enable Pause app activity if unused where available.","url":"https://support.google.com/android/answer/9431959?hl=en"},
+    {"id":"scanning","title":"Turn off Wi-Fi and Bluetooth scanning","text":"Settings → Location → Location services → Wi-Fi scanning and Bluetooth scanning → off. On older Android, scanning may be directly under Location. This can reduce location accuracy without turning off Wi-Fi or Bluetooth itself.","url":"https://support.google.com/android/answer/3467281?hl=en"},
+    {"id":"chrome","title":"Review Chrome privacy settings","text":"Chrome → ⋮ → Settings → Privacy and security. Review third-party cookies and Ad privacy (where available); disable ad topics, site-suggested ads and ad measurement if offered. Keep Safe Browsing protection on. Incognito does not make you anonymous to sites or your network.","url":"https://support.google.com/chrome/answer/114836?co=GENIE.Platform%3DAndroid&hl=en"},
+    {"id":"web-activity","title":"Review Google Web & App Activity","text":"Settings → Google → Manage your Google Account → Data & privacy → History settings → Web & App Activity → Turn off, or Turn off and delete activity. Review the Chrome history and voice/audio options too. Google is rolling out separate Search services settings, so also review those if shown. Labels may differ during this rollout.","url":"https://support.google.com/accounts/answer/54068?co=GENIE.Platform%3DAndroid&hl=en"}
+  ]
+}

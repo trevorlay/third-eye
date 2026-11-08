@@ -1,7 +1,8 @@
 import * as store from './store.js';
 import { BROKER_STATUSES } from './store.js';
+import { createPrivacyUI } from './privacy.js';
 
-const VERSION = '1.3.1';
+const VERSION = '1.4.0';
 const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const view = $('#view');
@@ -73,6 +74,7 @@ async function loadStatic() {
 async function load() {
   let bs;
   [state.links, state.cases, state.findings, bs, state.settings] = await Promise.all([store.listLinks(), store.listCases(), store.listFindings(), store.listBrokerStatus(), store.getSettings()]);
+  state.privacyCount = (await Promise.all([store.listAliases(),store.listPhones(),store.listPersonas(),store.listChecklist()])).reduce((n,r)=>n+r.length,0);
   state.live = await store.getLive();
   state.photoCounts = await store.photoCounts().catch(() => ({}));
   state.brokerStatus = new Map(bs.map(x => [x.id, x]));
@@ -83,7 +85,7 @@ function applyTheme(t) {
   const light = t === 'light' || (t === 'system' && matchMedia('(prefers-color-scheme: light)').matches);
   $('meta[name=theme-color]').content = light ? '#f5f3fb' : '#0d0b16';
 }
-const hasData = () => Object.keys(state.photoCounts).length || state.cases.length || state.findings.length || state.links.length || state.brokerStatus.size;
+const hasData = () => state.privacyCount || Object.keys(state.photoCounts).length || state.cases.length || state.findings.length || state.links.length || state.brokerStatus.size;
 function backupDue() {
   if (!hasData()) return false;
   const lb = state.settings.lastBackup;
@@ -771,7 +773,7 @@ function openFinding(f = null, caseId = null) {
 
 // ---------- REMOVAL ----------
 const stOf = id => state.brokerStatus.get(id) || { id, status: 'not started', date: '', listingUrl: '', notes: '' };
-const isDue = s => (s.status === 'submitted' || s.status === 'confirmed removed') && s.date && daysSince(s.date) >= 90;
+const isDue = s => (s.status === 'submitted' || s.status === 'confirmed removed') && !!s.recheckDate && s.recheckDate <= today();
 function updateBadge() {
   const n = state.data.brokers.filter(b => isDue(stOf(b.id))).length;
   const el = $('#removal-badge'); if (!el) return;
@@ -802,7 +804,7 @@ function brokerHTML(b) {
     <div class="top"><div class="spacer"><div class="name">${esc(b.name)}</div>${b.parent ? `<div class="parent">${esc(b.parent)}</div>` : ''}</div>
       <span class="st st-${stSlug(s.status)}" data-stlabel>${esc(cap(s.status))}</span></div>
     ${due ? `<div class="due">⟳ Recheck due · ${daysSince(s.date)} days since ${esc(s.status)}</div>` : ''}
-    ${s.date && !due ? `<div class="tiny muted">${esc(cap(s.status))} ${esc(fmtDate(s.date))}${s.status !== 'reappeared' ? ` · recheck in ${Math.max(0, 90 - daysSince(s.date))} days` : ''}</div>` : ''}
+    ${s.date && !due ? `<div class="tiny muted">${esc(cap(s.status))} ${esc(fmtDate(s.date))}${s.status !== 'reappeared' ? ` · recheck ${esc(s.recheckDate || 'not scheduled')}` : ''}</div>` : ''}
     <dl class="facts"><dt>Requires</dt><dd>${b.requires && b.requires.length ? esc(b.requires.join(', ')) : '<span class="muted">not listed</span>'}</dd>
       <dt>Turnaround</dt><dd>${b.turnaround ? esc(b.turnaround) : '<span class="muted">unknown</span>'}</dd>
       ${b.covers && b.covers.length ? `<dt>Also covers</dt><dd>${esc(b.covers.join(', '))}</dd>` : ''}</dl>
@@ -812,6 +814,8 @@ function brokerHTML(b) {
     <details${s.listingUrl || s.notes ? '' : ''}><summary>Details &amp; notes</summary>
       <div class="form">
         <label class="lbl" for="bd-${esc(b.id)}">Status date</label><input type="date" id="bd-${esc(b.id)}" data-bdate value="${esc(s.date)}">
+        <label class="lbl" for="bo-${esc(b.id)}">Opted-out date (confirmed removal)</label><input type="date" id="bo-${esc(b.id)}" data-bopt value="${esc(s.optedOutDate || '')}">
+        <label class="lbl" for="br-${esc(b.id)}">Re-check date</label><input type="date" id="br-${esc(b.id)}" data-brecheck value="${esc(s.recheckDate || '')}">
         <label class="lbl" for="bl-${esc(b.id)}">Your listing URL</label><input type="url" id="bl-${esc(b.id)}" data-blist value="${esc(s.listingUrl)}" placeholder="https://" inputmode="url" autocomplete="off">
         <label class="lbl" for="bn-${esc(b.id)}">Notes</label><textarea id="bn-${esc(b.id)}" data-bnotes rows="2" placeholder="Confirmation number, email used…">${esc(s.notes)}</textarea>
         ${s.status !== 'not started' ? '<button class="btn sm ghost" type="button" data-rechecked>Rechecked today (reset 90-day timer)</button>' : ''}
@@ -828,15 +832,16 @@ function renderRemoval() {
   const p = state.settings.profile || {};
   const chip = (id, l) => `<button class="chip${f === id ? ' on' : ''}" type="button" data-bf="${esc(id)}">${esc(l)}</button>`;
   view.innerHTML = `${backupBanner()}<h1>Data broker removal</h1>
+    <div class="card small"><label for="broker-progress">Confirmed removed: ${counts['confirmed removed']}/${B.length}</label><progress id="broker-progress" value="${counts['confirmed removed']}" max="${B.length}"></progress></div>
     <div class="stats" id="bstats">${BROKER_STATUSES.map(s => `<div class="stat st-${stSlug(s)}"><b>${counts[s]}</b><span>${esc(cap(s))}</span></div>`).join('')}</div>
-    ${due.length ? `<div class="banner" id="duebanner"><span>⟳</span><div class="spacer"><b>${due.length}</b> broker${due.length === 1 ? '' : 's'} due for a recheck (90+ days). Listings often come back.</div><button class="btn sm" type="button" data-bf="due">Show</button></div>` : ''}
+    ${due.length ? `<div class="banner" id="duebanner"><span>⟳</span><div class="spacer"><b>${due.length}</b> broker${due.length === 1 ? '' : 's'} overdue for a recheck. Listings often come back.</div><button class="btn sm" type="button" data-bf="due">Show</button></div>` : ''}
     <div class="card note small">🛡️ Third Eye <b>never sends anything</b> to brokers. Open each opt-out page yourself, then record the status here. Your details below stay on this phone.</div>
     <details class="card" id="tplcard"${state.tplOpen ? ' open' : ''}><summary><b>Opt-out request template</b></summary>
       <div class="form">${PROFILE.map(([k, l, ph]) => `<label class="lbl" for="pf-${k}">${l}</label><input type="text" id="pf-${k}" data-pf="${k}" value="${esc(p[k] || '')}" placeholder="${esc(ph)}" autocomplete="off">`).join('')}
         <label class="lbl" for="tpl-broker">Broker</label><select id="tpl-broker"><option value="">Generic</option>${B.map(b => `<option value="${esc(b.id)}"${b.id === state.tplBroker ? ' selected' : ''}>${esc(b.name)}</option>`).join('')}</select></div>
       <pre class="tpl" id="tpl"></pre>
       <button class="btn primary sm" type="button" id="tplcopy">${ICONS.copy} Copy request</button></details>
-    <div class="filters">${chip('all', `All (${B.length})`)}${chip('due', `Due (${due.length})`)}${BROKER_STATUSES.map(s => chip(s, `${cap(s)} (${counts[s]})`)).join('')}</div>
+    <div class="filters">${chip('all', `All (${B.length})`)}${chip('due', `Overdue (${due.length})`)}${BROKER_STATUSES.map(s => chip(s, `${cap(s)} (${counts[s]})`)).join('')}</div>
     <div id="blist">${shown.map(brokerHTML).join('') || '<div class="empty small">No brokers in this filter.</div>'}</div>
     <div class="endmark" id="end"></div>`;
   const drawTpl = () => { $('#tpl').textContent = optOutText(B.find(b => b.id === state.tplBroker)); };
@@ -857,17 +862,19 @@ function renderRemoval() {
     const sb = e.target.closest('[data-setst]');
     if (sb) {
       const status = sb.dataset.setst; if (status === stOf(id).status) return;
-      await saveBroker(id, { status, date: status === 'not started' ? '' : today() });
+      await saveBroker(id, { status, date: status === 'not started' ? '' : today(), optedOutDate: status === 'confirmed removed' ? today() : status === 'not started' ? '' : stOf(id).optedOutDate, recheckDate: status === 'not started' ? '' : store.addDays(today()) });
       toast(`${b.name}: ${status}`);
       if (state.brokerFilter !== 'all') renderRemoval(); else refreshRemovalStats();
     }
     if (e.target.closest('[data-tplfor]')) { await store.saveSettings({ profile: state.settings.profile }); copyText(optOutText(b), `Request for ${b.name} copied ✓`); }
-    if (e.target.closest('[data-rechecked]')) { await saveBroker(id, { date: today() }); toast('Timer reset'); refreshRemovalStats(); }
+    if (e.target.closest('[data-rechecked]')) { await saveBroker(id, { date: today(), recheckDate: store.addDays(today()) }); toast('Timer reset'); refreshRemovalStats(); }
   };
   list.onchange = async e => {
     const card = e.target.closest('[data-broker]'); if (!card) return;
     const id = card.dataset.broker, i = e.target;
-    if (i.matches('[data-bdate]')) { await saveBroker(id, { date: i.value }); refreshRemovalStats(); }
+    if (i.matches('[data-bdate]')) { await saveBroker(id, { date: i.value, recheckDate: store.addDays(i.value), ...(stOf(id).status === 'confirmed removed' ? { optedOutDate: i.value } : {}) }); refreshRemovalStats(); }
+    if (i.matches('[data-bopt]')) { await saveBroker(id, { optedOutDate: i.value, recheckDate: store.addDays(i.value) }); refreshRemovalStats(); }
+    if (i.matches('[data-brecheck]')) { await saveBroker(id, { recheckDate: i.value }); refreshRemovalStats(); }
     if (i.matches('[data-blist]')) await saveBroker(id, { listingUrl: i.value.trim() }, false);
     if (i.matches('[data-bnotes]')) await saveBroker(id, { notes: i.value }, false);
   };
@@ -883,7 +890,7 @@ async function saveBroker(id, patch, redraw = true) {
     if (old && b) { const wasOpen = old.querySelector('details').open; old.outerHTML = brokerHTML(b); if (wasOpen) $(`[data-broker="${CSS.escape(id)}"] details`).open = true; }
   }
 }
-function refreshRemovalStats() { const y = scrollY; renderRemoval(); scrollTo(0, y); }
+function refreshRemovalStats() { const y = scrollY, open = $$('[data-broker] details[open]').map(d=>d.closest('[data-broker]').dataset.broker); renderRemoval(); for(const id of open) { const d=$(`[data-broker="${CSS.escape(id)}"] details`); if(d)d.open=true; } scrollTo(0, y); }
 
 
 // ---------- LIVE CHECKS (optional server running Sherlock + Holehe) ----------
@@ -1092,14 +1099,14 @@ function renderSettings() {
     <div class="card">
       ${backupDue() ? '<div class="banner"><span>🛟</span><div class="spacer">Backup recommended: your data lives only on this phone.</div></div>' : ''}
       <div class="kv"><span class="muted">Last backup</span><span id="lastbk">${esc(lastBackupText())}</span></div>
-      <p class="small muted">Export saves a JSON file with your cases, findings, case photos, custom links, favorites, pins, broker statuses and opt-out details. Photos make the file bigger. Keep it somewhere private.</p>
+      <p class="small muted">Export saves a JSON file with your cases, findings, case photos, custom links, favorites, pins, broker statuses, opt-out details, aliases, secondary numbers, personas and the device checklist. Photos make the file bigger. Keep it somewhere private.</p>
       <p class="tiny muted" id="set-storage"></p>
       <div class="row"><button class="btn primary" type="button" id="export">Export JSON</button><button class="btn" type="button" id="import">Import JSON</button></div>
       <input type="file" id="importfile" accept="application/json,.json" hidden>
     </div>
     ${liveSettingsHTML()}
     <h2>Privacy</h2>
-    <div class="card small">No accounts, analytics, trackers, external scripts or fonts. Everything is stored in this browser (IndexedDB) on this phone. The only network requests are the links you tap, which open in a new tab, and live checks you start yourself, which go only to your own live check server. Third Eye never contacts data brokers.</div>
+    <div class="card small">No accounts, analytics, trackers, external scripts or fonts. Everything is stored in this browser (IndexedDB) on this phone. The only network requests are the links you tap, which open in a new tab, and live checks or alias creation you start yourself, which go through your own server. Alias creation sends the site and note to your chosen alias provider. Third Eye never contacts data brokers.</div>
     <h2>About</h2>
     <div class="card small">
       <div class="kv"><span class="muted">Version</span><span id="version">${VERSION}</span></div>
@@ -1132,7 +1139,7 @@ async function doImport(file) {
   try { data = JSON.parse(await file.text()); } catch { return alertDialog('Can’t read that file', 'It isn’t valid JSON.'); }
   if (!store.isBackup(data)) return alertDialog('Not a Third Eye backup', 'Choose a file exported from Third Eye’s Settings.');
   const nPh = Array.isArray(data.photos) ? data.photos.length : 0;
-  const mode = await choiceDialog('Import backup', `${data.cases.length} cases, ${data.findings.length} findings, ${nPh} photos, ${data.links.length} links, ${data.brokers.length} broker statuses.`,
+  const mode = await choiceDialog('Import backup', `${data.cases.length} cases, ${data.findings.length} findings, ${nPh} photos, ${data.links.length} links, ${data.brokers.length} broker statuses, ${(data.aliases || []).length} aliases, ${(data.phones || []).length} secondary numbers, ${(data.personas || []).length} personas, ${(data.checklist || []).length} checklist records.`,
     [{ v: 'merge', label: 'Merge with this phone', primary: true }, { v: 'replace', label: 'Replace everything', danger: true }]);
   if (!mode) return;
   if (mode === 'replace' && !await confirmDialog('Replace all data?', 'Everything currently in Third Eye on this phone will be deleted first.', 'Replace', true)) return;
@@ -1188,6 +1195,11 @@ addEventListener('popstate', () => { if (closeSheet.skip) { const r = closeSheet
 function dropSheet() { const s = sheetEl; sheetEl = null; s.remove(); if (s.onClose) try { s.onClose(); } catch { /* ignore */ } }
 addEventListener('keydown', e => { if (e.key === 'Escape' && sheetEl && !mroot.querySelector('.center')) closeSheet(); });
 
+// ---------- privacy ----------
+const privacyUI = createPrivacyUI({ $, $$, view, esc, ext, today, toast, copyText, liveFetch, liveReady, confirmDialog, backupBanner,
+  onChanged: load, overdue: () => state.data.brokers.filter(b=>isDue(stOf(b.id))).length,
+  removed: () => state.data.brokers.filter(b=>stOf(b.id).status==='confirmed removed').length,
+  brokerTotal: () => state.data.brokers.length });
 // ---------- router ----------
 function route() {
   const h = location.hash.replace(/^#\/?/, '');
@@ -1199,13 +1211,14 @@ function render() {
   revokeGrid();
   const nav = a === 'case' ? 'cases' : a;
   $$('.bottomnav a').forEach(x => { const on = x.dataset.nav === nav; x.classList.toggle('active', on); on ? x.setAttribute('aria-current', 'page') : x.removeAttribute('aria-current'); });
-  const titles = { tools: 'Tools', search: 'Search', cases: 'Cases', case: 'Case', removal: 'Removal', settings: 'Settings' };
+  const titles = { tools: 'Tools', search: 'Search', cases: 'Cases', case: 'Case', removal: 'Removal', settings: 'Settings', privacy: 'Privacy' };
   document.title = 'Third Eye · ' + (titles[a] || 'Tools');
   if (a === 'search') renderSearch(b, c);
   else if (a === 'cases') renderCases();
   else if (a === 'case') renderCase(b);
   else if (a === 'removal') renderRemoval();
   else if (a === 'settings') renderSettings();
+  else if (a === 'privacy') { privacyUI.render().catch(() => { if (route().a !== 'privacy') return; view.innerHTML = '<h1>Privacy</h1><p>Could not load privacy data. Reload to retry.</p><div id="end"></div>'; }); }
   else renderTools();
 }
 let lastRoute = '';

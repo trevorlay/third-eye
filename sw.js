@@ -2,11 +2,11 @@
 // Bump CACHE_VERSION on every deploy (keep it in sync with VERSION in app.js).
 // Strategy: network-first for the app's own files with a 4 s timeout, falling back to the
 // versioned cache when offline. Requests to other origins are never touched.
-const CACHE_VERSION = 'v1.3.1';
+const CACHE_VERSION = 'v1.4.0';
 const CACHE = 'third-eye-' + CACHE_VERSION;
 const SHELL = [
-  './', './styles.css', './app.js', './store.js', './manifest.json',
-  './data/tools.json', './data/usernames.json', './data/brokers.json',
+  './', './styles.css', './app.js', './store.js', './privacy.js', './manifest.json',
+  './data/tools.json', './data/usernames.json', './data/brokers.json', './data/privacy.json',
   './icons/icon-192.png', './icons/icon-512.png', './icons/icon-maskable-512.png', './icons/favicon-32.png',
 ];
 
